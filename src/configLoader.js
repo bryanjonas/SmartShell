@@ -6,8 +6,12 @@ const yaml = require('js-yaml');
 
 const DEFAULTS = {
   llm: {
-    url: 'http://localhost:11434',
-    model: 'llama3.2'
+    url:                'http://localhost:11434',
+    model:              'llama3.2',
+    source:             'local',  // 'local' | 'openai'
+    openaiAccessToken:  '',       // main-process only — never sent to renderer
+    openaiRefreshToken: '',       // main-process only — never sent to renderer
+    openaiTokenExpiry:  0         // unix ms timestamp; 0 = unknown
   },
   terminal: {
     shell: '',
@@ -17,7 +21,11 @@ const DEFAULTS = {
   context: {
     maxEntries: 10,
     maxOutputChars: 2000
-  }
+  },
+  assistant: {
+    mode: 'prompted' // 'prompted' | 'automatic' | 'autorun'
+  },
+  systemPrompt: ''  // empty = use built-in default; terminal context always appended
 };
 
 function deepMerge(target, source) {

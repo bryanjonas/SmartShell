@@ -8,7 +8,7 @@
     "rebuild": "electron-rebuild -f -w node-pty",
     "postinstall": "electron-rebuild -f -w node-pty",
     "build": "electron-builder --mac",
-    "dev": "ELECTRON_RUN_AS_NODE= NODE_ENV=development electron ."
+    "dev": "ELECTRON_RUN_AS_NODE= NODE_ENV=development electron . --no-sandbox --disable-gpu --ozone-platform=x11"
   },
   "build": {
     "appId": "com.smartshell.app",

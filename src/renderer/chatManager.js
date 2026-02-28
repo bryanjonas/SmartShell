@@ -9,6 +9,7 @@ class ChatManager {
     this.sendBtn       = document.getElementById('send-btn');
     this.streaming     = false;
     this.currentBody   = null; // The .message-body element being streamed into
+    this.autoCurrentBody = null;
 
     this._bindEvents();
     this._bindIPC();
@@ -64,6 +65,45 @@ class ChatManager {
 
       this._appendMessage('error', 'Error', errMsg);
       this.chatInput.focus();
+    });
+
+    // Auto stream start
+    ipcRenderer.on('autochat:start', (_event, payload) => {
+      if (this.autoCurrentBody) return;
+      const label = payload && payload.command
+        ? `Assistant (Auto · ${payload.command})`
+        : 'Assistant (Auto)';
+      this.autoCurrentBody = this._appendMessage('assistant', label, '');
+      this.autoCurrentBody.classList.add('streaming-cursor');
+    });
+
+    // Auto streaming token
+    ipcRenderer.on('autochat:chunk', (_event, chunk) => {
+      if (!this.autoCurrentBody) return;
+      this.autoCurrentBody.textContent += chunk;
+      this._scrollToBottom();
+    });
+
+    // Auto stream complete
+    ipcRenderer.on('autochat:done', () => {
+      if (this.autoCurrentBody) {
+        this.autoCurrentBody.classList.remove('streaming-cursor');
+      }
+      this.autoCurrentBody = null;
+    });
+
+    // Auto stream error
+    ipcRenderer.on('autochat:error', (_event, errMsg) => {
+      if (this.autoCurrentBody) {
+        const msgEl = this.autoCurrentBody.closest('.message');
+        if (msgEl && msgEl.textContent.trim().startsWith('Assistant (Auto')) {
+          msgEl.remove();
+        } else {
+          this.autoCurrentBody.classList.remove('streaming-cursor');
+        }
+      }
+      this.autoCurrentBody = null;
+      this._appendMessage('error', 'Auto Error', errMsg);
     });
   }
 

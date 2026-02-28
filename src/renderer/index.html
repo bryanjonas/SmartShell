@@ -34,25 +34,93 @@
 
       <!-- SETTINGS PANEL (overlays chat content when open) -->
       <div id="settings-panel" class="settings-panel hidden">
+
+        <!-- ── LLM SOURCE SELECTOR ── -->
         <div class="settings-section">
-          <label class="settings-label" for="settings-url">Server URL</label>
-          <div class="settings-row">
-            <input id="settings-url" type="text" class="settings-input"
-              placeholder="http://localhost:11434" spellcheck="false" autocomplete="off">
-            <button id="settings-fetch-btn" class="settings-fetch-btn">Fetch Models</button>
+          <label class="settings-label">LLM Source</label>
+          <div class="settings-source-tabs">
+            <button id="source-local-btn"  class="settings-source-tab active" data-source="local">Local API Endpoint</button>
+            <button id="source-openai-btn" class="settings-source-tab"        data-source="openai">OpenAI Codex</button>
           </div>
         </div>
-        <div class="settings-section">
-          <label class="settings-label" for="settings-model">Model</label>
-          <select id="settings-model" class="settings-input settings-select">
-            <option value="">— fetch models first —</option>
-          </select>
+
+        <!-- ── LOCAL ENDPOINT SECTION ── -->
+        <div id="local-section">
+          <div class="settings-section">
+            <label class="settings-label" for="settings-url">Server URL</label>
+            <div class="settings-row">
+              <input id="settings-url" type="text" class="settings-input"
+                placeholder="http://localhost:11434" spellcheck="false" autocomplete="off">
+              <button id="settings-fetch-btn" class="settings-fetch-btn">Fetch Models</button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <label class="settings-label" for="settings-model-local">Model</label>
+            <select id="settings-model-local" class="settings-input settings-select">
+              <option value="">— fetch models first —</option>
+            </select>
+          </div>
         </div>
+
+        <!-- ── OPENAI CODEX SECTION ── -->
+        <div id="openai-section" class="hidden">
+
+          <!-- Sign-in status -->
+          <div class="settings-section">
+            <label class="settings-label">Account</label>
+            <p class="settings-note">
+              Sign in with your OpenAI account via OAuth 2.0 (PKCE). A browser window will open.
+              Your credentials are stored locally and never transmitted except to OpenAI.
+            </p>
+            <div id="openai-auth-status" class="openai-auth-status disconnected">
+              <span id="openai-auth-text">Not signed in</span>
+              <button id="openai-connect-btn"    class="settings-fetch-btn">Sign in with OpenAI</button>
+              <button id="openai-disconnect-btn" class="settings-fetch-btn hidden">Sign out</button>
+            </div>
+          </div>
+
+          <!-- Model -->
+          <div class="settings-section">
+            <label class="settings-label" for="settings-model-openai">Model</label>
+            <select id="settings-model-openai" class="settings-input settings-select">
+              <option value="gpt-5.3-codex">GPT-5.3-Codex</option>
+              <option value="gpt-5.2-codex">GPT-5.2-Codex</option>
+              <option value="gpt-5.1-codex-max">GPT-5.1-Codex-Max</option>
+              <option value="gpt-5.1-codex-mini" selected>GPT-5.1-Codex-Mini</option>
+              <option value="gpt-5.2">GPT-5.2</option>
+            </select>
+          </div>
+
+        </div>
+
+        <!-- ── SYSTEM PROMPT ── -->
+        <div class="settings-section">
+          <div class="settings-prompt-header">
+            <label class="settings-label" for="settings-system-prompt">System Prompt</label>
+            <button id="prompt-reset-btn" class="settings-btn-secondary settings-btn-small">Reset to Default</button>
+          </div>
+          <textarea id="settings-system-prompt" class="settings-input settings-prompt-textarea"
+            spellcheck="false" rows="5"
+            placeholder="Leave blank to use the built-in default. Terminal context is always appended automatically."></textarea>
+        </div>
+
+        <!-- ── ACTIONS ── -->
         <div class="settings-actions">
           <span id="settings-status" class="settings-status"></span>
           <button id="settings-cancel-btn" class="settings-btn-secondary">Cancel</button>
-          <button id="settings-save-btn" class="settings-btn-primary">Save</button>
+          <button id="settings-save-btn"   class="settings-btn-primary">Save</button>
         </div>
+
+      </div>
+
+      <div id="assistant-mode-bar" class="assistant-mode-bar">
+        <label for="assistant-mode-select" class="assistant-mode-label">Assistant Mode</label>
+        <select id="assistant-mode-select" class="assistant-mode-select">
+          <option value="prompted">Respond when prompted</option>
+          <option value="automatic">Respond automatically</option>
+          <option value="autorun">Auto-run commands</option>
+        </select>
+        <span id="assistant-mode-note" class="assistant-mode-note"></span>
       </div>
 
       <div id="message-list">

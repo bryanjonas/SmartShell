@@ -2,10 +2,12 @@
 
 // Strips ANSI escape codes from a string
 const ANSI_REGEX = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]/g;
+// Strips OSC sequences (e.g., terminal title updates) which can interfere with prompt detection.
+const OSC_REGEX = /\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g;
 
-// Matches common shell prompts at end of a line: "$ ", "# ", "% ", "> "
-// Handles prompts like: "user@host:~/path$ ", "root# ", "[user@host ~]$ ", "% "
-const PROMPT_PATTERN = /(?:\$|#|%|>)\s*$/;
+// Matches common shell prompts at end of a line.
+// Includes modern prompts such as "❯", "➜", and "λ".
+const PROMPT_PATTERN = /(?:\$|#|%|>|\u276f|\u279c|\u03bb)\s*$/;
 
 class ContextBuffer {
   constructor(maxEntries = 10, maxOutputChars = 2000) {
@@ -30,8 +32,16 @@ class ContextBuffer {
 
   // Called from pty:input handler when user presses Enter
   notifyEnter() {
-    if (this.state === 'IDLE') {
-      this.pendingCommand = this.inputAccumulator.trim();
+    const submitted = this.inputAccumulator.trim();
+
+    // If we are still collecting a previous command, roll it over on Enter.
+    // This is a best-effort boundary for shells/prompts we cannot detect reliably.
+    if (this.state === 'COLLECTING_OUTPUT' && this.pendingCommand) {
+      this._finalizeEntry();
+    }
+
+    if (submitted) {
+      this.pendingCommand = submitted;
       this.outputAccumulator = '';
       this.state = 'COLLECTING_OUTPUT';
     }
@@ -43,7 +53,7 @@ class ContextBuffer {
     if (this.state !== 'COLLECTING_OUTPUT') return;
 
     // Strip ANSI codes for clean context
-    const clean = rawData.replace(ANSI_REGEX, '');
+    const clean = rawData.replace(OSC_REGEX, '').replace(ANSI_REGEX, '');
 
     // Truncate to maxOutputChars
     if (this.outputAccumulator.length < this.maxOutputChars) {
@@ -56,7 +66,9 @@ class ContextBuffer {
     }
 
     // Check if a shell prompt has appeared (command finished)
-    const lines = this.outputAccumulator.split('\n');
+    // Normalize CRLF/CR for prompt matching.
+    const normalized = this.outputAccumulator.replace(/\r/g, '');
+    const lines = normalized.split('\n');
     const lastLine = lines[lines.length - 1];
     if (PROMPT_PATTERN.test(lastLine)) {
       this._finalizeEntry();
@@ -79,6 +91,14 @@ class ContextBuffer {
     this.pendingCommand = '';
     this.outputAccumulator = '';
     this.state = 'IDLE';
+  }
+
+  // Best-effort flush used before building an LLM request.
+  // This captures the latest command/output even when prompt detection misses.
+  flushPending() {
+    if (this.state === 'COLLECTING_OUTPUT' && this.pendingCommand) {
+      this._finalizeEntry();
+    }
   }
 
   // Format entries for inclusion in the LLM system prompt

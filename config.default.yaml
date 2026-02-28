@@ -2,10 +2,22 @@
 # Copy to config.yaml and edit to customize
 
 llm:
-  # Base URL of the Ollama instance
+  # LLM source: "local" (Ollama, vLLM, LM Studio, etc.) or "openai" (OpenAI Codex via OAuth)
+  source: "local"
+
+  # ── Local endpoint settings (used when source = "local") ──
+  # Base URL of the OpenAI-compatible server
   url: "http://localhost:11434"
-  # Model to use - must be pulled first (e.g., `ollama pull llama3.2`)
+  # Model to use — must be pulled first (e.g., `ollama pull llama3.2`)
   model: "llama3.2"
+
+  # ── OpenAI Codex settings (used when source = "openai") ──
+  # Authentication is handled via OAuth 2.0 + PKCE — no credentials needed here.
+  # Click "Sign in with OpenAI" in Settings to authorize via browser.
+  # Tokens are stored below after a successful sign-in (managed automatically).
+  # openaiAccessToken:  ""   # stored automatically after sign-in
+  # openaiRefreshToken: ""   # stored automatically after sign-in
+  # openaiTokenExpiry:  0    # stored automatically after sign-in
 
 terminal:
   # Shell to launch - leave empty to use $SHELL env var
@@ -20,3 +32,15 @@ context:
   maxEntries: 10
   # Max characters of output stored per command (prevents huge outputs)
   maxOutputChars: 2000
+
+assistant:
+  # Assistant behavior mode:
+  # "prompted"  = responds only when you send chat input
+  # "automatic" = automatically comments on completed terminal commands
+  # "autorun"   = reserved (not implemented yet)
+  mode: "prompted"
+
+# Custom system prompt for the AI assistant.
+# Leave empty to use the built-in default.
+# The terminal context (recent commands + output) is always appended automatically.
+systemPrompt: ""

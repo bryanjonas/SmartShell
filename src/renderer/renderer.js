@@ -21,12 +21,16 @@ async function init() {
   // Initialize chat
   new ChatManager();
 
+  // Initialize assistant behavior controls
+  initAssistantModeControls(config);
+
   // Initialize settings panel
   const toggleBtn = document.getElementById('settings-toggle-btn');
-  const settingsMgr = new SettingsManager((url, model) => {
+  const settingsMgr = new SettingsManager((source, url, model) => {
     // Update model badge and cached config after save
-    config.llm.url   = url;
-    config.llm.model = model;
+    config.llm.source = source;
+    config.llm.url    = url || config.llm.url;
+    config.llm.model  = model;
     if (modelLabel) modelLabel.textContent = model;
     toggleBtn.classList.remove('active');
   });
@@ -36,7 +40,7 @@ async function init() {
       settingsMgr.close();
       toggleBtn.classList.remove('active');
     } else {
-      settingsMgr.open(config.llm.url, config.llm.model);
+      settingsMgr.open(config); // pass full config snapshot
       toggleBtn.classList.add('active');
     }
   });
@@ -47,6 +51,43 @@ async function init() {
   // Click on terminal pane focuses the terminal
   document.getElementById('terminal-pane').addEventListener('click', () => {
     termMgr.focus();
+  });
+}
+
+function initAssistantModeControls(config) {
+  const selectEl = document.getElementById('assistant-mode-select');
+  const noteEl = document.getElementById('assistant-mode-note');
+  if (!selectEl || !noteEl) return;
+
+  const applyNote = (mode) => {
+    if (mode === 'autorun') {
+      noteEl.textContent = 'Auto-run commands is not implemented yet.';
+      noteEl.classList.add('warn');
+    } else if (mode === 'automatic') {
+      noteEl.textContent = 'Assistant will proactively comment on terminal results.';
+      noteEl.classList.remove('warn');
+    } else {
+      noteEl.textContent = '';
+      noteEl.classList.remove('warn');
+    }
+  };
+
+  let currentMode = (config.assistant && config.assistant.mode) || 'prompted';
+  selectEl.value = currentMode;
+  applyNote(currentMode);
+
+  selectEl.addEventListener('change', async () => {
+    const requestedMode = selectEl.value;
+    const result = await ipcRenderer.invoke('assistant:set-mode', requestedMode);
+    if (result.error) {
+      applyNote(currentMode);
+      selectEl.value = currentMode;
+      return;
+    }
+    config.assistant = config.assistant || {};
+    config.assistant.mode = requestedMode;
+    currentMode = requestedMode;
+    applyNote(requestedMode);
   });
 }
 
