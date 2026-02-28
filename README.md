@@ -64,11 +64,26 @@ Development (with DevTools):
 npm run dev
 ```
 
-Package macOS `.dmg`:
+## Build by Platform
+
+### macOS
+
+Build distributable `.dmg`:
 
 ```bash
 npm run build
 ```
+
+### Linux
+
+Run from source:
+
+```bash
+npm install
+npm start
+```
+
+Linux packaging is not currently configured in `electron-builder` (current build target is macOS `.dmg` only).
 
 ## Provider Setup
 
