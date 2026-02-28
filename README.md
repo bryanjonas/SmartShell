@@ -1,6 +1,6 @@
 # SmartShell
 
-![SmartShell Icon](assets/icon.png)
+<img src="assets/icon.png" alt="SmartShell Icon" width="160" />
 
 SmartShell is an Electron desktop app with:
 - A real PTY terminal on the left
