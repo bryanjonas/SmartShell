@@ -8,10 +8,11 @@ const DEFAULTS = {
   llm: {
     url:                'http://localhost:11434',
     model:              'llama3.2',
-    source:             'local',  // 'local' | 'openai'
+    source:             'local',  // 'local' | 'openai' | 'gemini'
     openaiAccessToken:  '',       // main-process only — never sent to renderer
     openaiRefreshToken: '',       // main-process only — never sent to renderer
-    openaiTokenExpiry:  0         // unix ms timestamp; 0 = unknown
+    openaiTokenExpiry:  0,        // unix ms timestamp; 0 = unknown
+    geminiApiKey:       ''        // stored locally; never sent to renderer
   },
   terminal: {
     shell: '',

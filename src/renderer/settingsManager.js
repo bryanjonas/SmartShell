@@ -16,10 +16,12 @@ class SettingsManager {
     // Source tabs
     this.sourceLocalBtn  = document.getElementById('source-local-btn');
     this.sourceOpenaiBtn = document.getElementById('source-openai-btn');
+    this.sourceGeminiBtn = document.getElementById('source-gemini-btn');
 
     // Source sections
     this.localSection  = document.getElementById('local-section');
     this.openaiSection = document.getElementById('openai-section');
+    this.geminiSection = document.getElementById('gemini-section');
 
     // Local endpoint fields
     this.urlInput         = document.getElementById('settings-url');
@@ -35,6 +37,11 @@ class SettingsManager {
     // OpenAI Codex model
     this.openaiModelSelect = document.getElementById('settings-model-openai');
 
+    // Gemini section
+    this.geminiKeyInput     = document.getElementById('settings-gemini-key');
+    this.geminiModelSelect  = document.getElementById('settings-model-gemini');
+    this.geminiFetchBtn     = document.getElementById('settings-fetch-gemini-btn');
+
     // System prompt
     this.systemPromptTextarea = document.getElementById('settings-system-prompt');
     this.promptResetBtn       = document.getElementById('prompt-reset-btn');
@@ -47,6 +54,7 @@ class SettingsManager {
     // Internal state
     this._currentSource   = 'local';
     this._openaiConnected = false;
+    this._geminiHasKey    = false;
 
     this._bindEvents();
   }
@@ -59,6 +67,7 @@ class SettingsManager {
   open(config) {
     this._currentSource   = config.llm.source        || 'local';
     this._openaiConnected = config.llm.openaiConnected || false;
+    this._geminiHasKey    = config.llm.geminiHasKey || false;
 
     // Populate local section
     this.urlInput.value = config.llm.url || '';
@@ -66,6 +75,10 @@ class SettingsManager {
 
     // Populate OpenAI Codex section
     this._updateOpenAIAuthUI(this._openaiConnected);
+
+    // Populate Gemini section
+    this.geminiKeyInput.value = '';
+    this._resetSelect(this.geminiModelSelect, '');
 
     // OpenAI model: keep current selection only if it's in the curated list.
     // Older saved values (e.g. gpt-4o-mini) are forced to the current default.
@@ -93,6 +106,8 @@ class SettingsManager {
     this.panel.classList.remove('hidden');
     if (this._currentSource === 'local') {
       this.urlInput.focus();
+    } else if (this._currentSource === 'gemini') {
+      this.geminiKeyInput.focus();
     }
   }
 
@@ -106,8 +121,10 @@ class SettingsManager {
     this._currentSource = source;
     this.sourceLocalBtn.classList.toggle('active',  source === 'local');
     this.sourceOpenaiBtn.classList.toggle('active', source === 'openai');
+    this.sourceGeminiBtn.classList.toggle('active', source === 'gemini');
     this.localSection.classList.toggle('hidden',  source !== 'local');
     this.openaiSection.classList.toggle('hidden', source !== 'openai');
+    this.geminiSection.classList.toggle('hidden', source !== 'gemini');
   }
 
   _updateOpenAIAuthUI(connected) {
@@ -166,6 +183,7 @@ class SettingsManager {
     // Source tabs
     this.sourceLocalBtn.addEventListener('click',  () => this._switchSource('local'));
     this.sourceOpenaiBtn.addEventListener('click', () => this._switchSource('openai'));
+    this.sourceGeminiBtn.addEventListener('click', () => this._switchSource('gemini'));
 
     // Cancel
     this.cancelBtn.addEventListener('click', () => this.close());
@@ -228,6 +246,31 @@ class SettingsManager {
       this._setStatus('Signed out from OpenAI.', 'ok');
     });
 
+    // ── GEMINI: Fetch Models ──
+    this.geminiFetchBtn.addEventListener('click', async () => {
+      const enteredKey = this.geminiKeyInput.value.trim();
+      const effectiveKey = enteredKey || (this._geminiHasKey ? '__saved__' : '');
+      if (!effectiveKey) { this._setStatus('Enter a Gemini API key first.', 'error'); return; }
+
+      this.geminiFetchBtn.disabled = true;
+      this.geminiFetchBtn.textContent = 'Fetching…';
+      this._setStatus('');
+
+      const result = await ipcRenderer.invoke('llm:fetch-models', {
+        source: 'gemini',
+        apiKey: enteredKey || undefined
+      });
+
+      this.geminiFetchBtn.disabled = false;
+      this.geminiFetchBtn.textContent = 'Fetch Models';
+
+      if (result.error) { this._setStatus(`Error: ${result.error}`, 'error'); return; }
+
+      const prev = this.geminiModelSelect.value;
+      this._populateSelect(this.geminiModelSelect, result.models, prev);
+      this._setStatus(`${result.models.length} model(s) found`, 'ok');
+    });
+
     // ── Save ──
     this.saveBtn.addEventListener('click', async () => {
       const promptValue  = this.systemPromptTextarea.value.trim();
@@ -241,10 +284,16 @@ class SettingsManager {
         if (!url || !model) { this._setStatus('URL and model are required.', 'error'); return; }
         payload = { source: 'local', url, model, systemPrompt };
 
-      } else {
+      } else if (this._currentSource === 'openai') {
         const model = this.openaiModelSelect.value;
         if (!model) { this._setStatus('Select a model first.', 'error'); return; }
         payload = { source: 'openai', model, systemPrompt };
+      } else {
+        const apiKey = this.geminiKeyInput.value.trim();
+        const model = this.geminiModelSelect.value;
+        if (!model) { this._setStatus('Select a Gemini model first.', 'error'); return; }
+        if (!apiKey && !this._geminiHasKey) { this._setStatus('Gemini API key is required.', 'error'); return; }
+        payload = { source: 'gemini', model, apiKey, systemPrompt };
       }
 
       this.saveBtn.disabled = true;
@@ -252,8 +301,13 @@ class SettingsManager {
       this.saveBtn.disabled = false;
 
       if (result.error) { this._setStatus(`Save failed: ${result.error}`, 'error'); return; }
+      if (payload.source === 'gemini' && payload.apiKey && payload.apiKey.trim()) {
+        this._geminiHasKey = true;
+      }
 
-      this.onSaved(payload.source, payload.url || null, payload.model);
+      this.onSaved(payload.source, payload.url || null, payload.model, {
+        geminiHasKey: payload.source === 'gemini' ? (!!(payload.apiKey && payload.apiKey.trim()) || this._geminiHasKey) : this._geminiHasKey
+      });
       this.close();
     });
   }

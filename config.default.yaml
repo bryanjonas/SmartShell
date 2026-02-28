@@ -2,7 +2,7 @@
 # Copy to config.yaml and edit to customize
 
 llm:
-  # LLM source: "local" (Ollama, vLLM, LM Studio, etc.) or "openai" (OpenAI Codex via OAuth)
+  # LLM source: "local" (Ollama/vLLM/LM Studio), "openai" (OpenAI Codex OAuth), or "gemini" (Gemini API key)
   source: "local"
 
   # ── Local endpoint settings (used when source = "local") ──
@@ -18,6 +18,11 @@ llm:
   # openaiAccessToken:  ""   # stored automatically after sign-in
   # openaiRefreshToken: ""   # stored automatically after sign-in
   # openaiTokenExpiry:  0    # stored automatically after sign-in
+
+  # ── Gemini settings (used when source = "gemini") ──
+  # Uses Gemini's OpenAI-compatible endpoint.
+  # Get an API key from Google AI Studio and paste in Settings.
+  # geminiApiKey: ""          # stored locally after save
 
 terminal:
   # Shell to launch - leave empty to use $SHELL env var

@@ -4,12 +4,22 @@
 // Works with Ollama, LM Studio, llama.cpp server, vLLM, LocalAI, OpenAI, etc.
 // When useResponsesAPI=true, uses /v1/responses (required for OpenAI Codex models).
 class LLMClient {
-  constructor(baseUrl, model, authToken = null, useResponsesAPI = false, responsesPath = '/v1/responses') {
+  constructor(
+    baseUrl,
+    model,
+    authToken = null,
+    useResponsesAPI = false,
+    responsesPath = '/v1/responses',
+    completionsPath = '/v1/chat/completions',
+    modelsPath = '/v1/models'
+  ) {
     this.baseUrl         = baseUrl.replace(/\/$/, '');
     this.model           = model;
     this.authToken       = authToken;       // Bearer token; null for unauthenticated local endpoints
     this.useResponsesAPI = useResponsesAPI; // true for OpenAI Codex flow
     this.responsesPath   = responsesPath;   // allows ChatGPT Codex backend path
+    this.completionsPath = completionsPath;
+    this.modelsPath      = modelsPath;
   }
 
   _buildHeaders() {
@@ -38,7 +48,7 @@ class LLMClient {
 
     let response;
     try {
-      response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+      response = await fetch(`${this.baseUrl}${this.completionsPath}`, {
         method: 'POST',
         headers: this._buildHeaders(),
         body
@@ -175,7 +185,7 @@ class LLMClient {
 
   // Fetch available models from /v1/models.
   async fetchModels() {
-    const response = await fetch(`${this.baseUrl}/v1/models`, {
+    const response = await fetch(`${this.baseUrl}${this.modelsPath}`, {
       headers: this._buildHeaders()
     });
     if (!response.ok) {

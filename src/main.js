@@ -39,6 +39,7 @@ const CODEX_REDIRECT_URI = 'http://localhost:1455/auth/callback';
 const CODEX_SCOPES      = 'openid profile email offline_access';
 const CODEX_PORT        = 1455;
 const CODEX_BACKEND_BASE_URL = 'https://chatgpt.com/backend-api/codex';
+const GEMINI_OPENAI_BASE_URL = 'https://generativelanguage.googleapis.com';
 
 // ---- PKCE helpers ----
 function generateCodeVerifier()   { return crypto.randomBytes(32).toString('base64url'); }
@@ -97,6 +98,17 @@ function createLLMClientForSource(source, url, model, openaiToken = null) {
   if (source === 'openai') {
     // ChatGPT OAuth tokens for Codex are served by the ChatGPT Codex backend.
     return new LLMClient(CODEX_BACKEND_BASE_URL, model, openaiToken || null, true, '/responses');
+  }
+  if (source === 'gemini') {
+    return new LLMClient(
+      GEMINI_OPENAI_BASE_URL,
+      model,
+      config.llm.geminiApiKey || null,
+      false,
+      '/v1/responses',
+      '/v1beta/openai/chat/completions',
+      '/v1beta/openai/models'
+    );
   }
   return new LLMClient(url, model, null, false);
 }
@@ -324,12 +336,25 @@ ipcMain.on('chat:send', async (_event, userMessage) => {
 });
 
 // ---- IPC: Fetch models from an OpenAI-compatible endpoint ----
-ipcMain.handle('llm:fetch-models', async (_event, { url, source }) => {
+ipcMain.handle('llm:fetch-models', async (_event, { url, source, apiKey }) => {
   try {
     if (source === 'openai') return { error: 'OpenAI model discovery is not supported in-app.' };
-    const effectiveUrl   = source === 'openai' ? 'https://api.openai.com' : url;
-    const effectiveToken = source === 'openai' ? (config.llm.openaiAccessToken || null) : null;
-    const client = new LLMClient(effectiveUrl, '', effectiveToken);
+    let client;
+    if (source === 'gemini') {
+      const token = (apiKey || '').trim() || config.llm.geminiApiKey || null;
+      if (!token) return { error: 'Gemini API key is required.' };
+      client = new LLMClient(
+        GEMINI_OPENAI_BASE_URL,
+        '',
+        token,
+        false,
+        '/v1/responses',
+        '/v1beta/openai/chat/completions',
+        '/v1beta/openai/models'
+      );
+    } else {
+      client = new LLMClient(url, '', null);
+    }
     const models = await client.fetchModels();
     return { models };
   } catch (err) {
@@ -348,6 +373,12 @@ ipcMain.handle('llm:save-config', (_event, payload) => {
       config.llm.url   = payload.url;
       config.llm.model = payload.model;
       ollamaClient = createLLMClientForSource('local', payload.url, payload.model, null);
+    } else if (payload.source === 'gemini') {
+      const apiKey = (payload.apiKey || '').trim();
+      if (apiKey) config.llm.geminiApiKey = apiKey;
+      if (!config.llm.geminiApiKey) return { error: 'Gemini API key is required.' };
+      config.llm.model = payload.model;
+      ollamaClient = createLLMClientForSource('gemini', config.llm.url, payload.model, null);
     } else {
       // openai (Codex)
       config.llm.model = payload.model;
@@ -368,7 +399,8 @@ ipcMain.handle('config:get', () => {
       url:             config.llm.url,
       model:           config.llm.model,
       source:          config.llm.source   || 'local',
-      openaiConnected: !!(config.llm.openaiAccessToken)
+      openaiConnected: !!(config.llm.openaiAccessToken),
+      geminiHasKey:    !!(config.llm.geminiApiKey)
       // tokens are never sent to the renderer
     },
     terminal:     config.terminal,

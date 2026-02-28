@@ -26,11 +26,14 @@ async function init() {
 
   // Initialize settings panel
   const toggleBtn = document.getElementById('settings-toggle-btn');
-  const settingsMgr = new SettingsManager((source, url, model) => {
+  const settingsMgr = new SettingsManager((source, url, model, meta = {}) => {
     // Update model badge and cached config after save
     config.llm.source = source;
     config.llm.url    = url || config.llm.url;
     config.llm.model  = model;
+    if (typeof meta.geminiHasKey === 'boolean') {
+      config.llm.geminiHasKey = meta.geminiHasKey;
+    }
     if (modelLabel) modelLabel.textContent = model;
     toggleBtn.classList.remove('active');
   });

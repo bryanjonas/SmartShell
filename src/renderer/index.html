@@ -41,6 +41,7 @@
           <div class="settings-source-tabs">
             <button id="source-local-btn"  class="settings-source-tab active" data-source="local">Local API Endpoint</button>
             <button id="source-openai-btn" class="settings-source-tab"        data-source="openai">OpenAI Codex</button>
+            <button id="source-gemini-btn" class="settings-source-tab"        data-source="gemini">Gemini API Key</button>
           </div>
         </div>
 
@@ -91,6 +92,27 @@
             </select>
           </div>
 
+        </div>
+
+        <!-- ── GEMINI SECTION ── -->
+        <div id="gemini-section" class="hidden">
+          <div class="settings-section">
+            <label class="settings-label" for="settings-gemini-key">API Key</label>
+            <input id="settings-gemini-key" type="password" class="settings-input"
+              placeholder="AIza..." spellcheck="false" autocomplete="off">
+            <p class="settings-note">
+              Enter your Gemini API key (stored locally in config.yaml). Leave blank to keep the saved key.
+            </p>
+          </div>
+          <div class="settings-section">
+            <label class="settings-label" for="settings-model-gemini">Model</label>
+            <div class="settings-row">
+              <select id="settings-model-gemini" class="settings-input settings-select">
+                <option value="">— fetch models first —</option>
+              </select>
+              <button id="settings-fetch-gemini-btn" class="settings-fetch-btn">Fetch Models</button>
+            </div>
+          </div>
         </div>
 
         <!-- ── SYSTEM PROMPT ── -->

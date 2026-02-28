@@ -15,6 +15,7 @@ SmartShell is an Electron desktop app with:
 - LLM source switching:
   - Local OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, etc.)
   - OpenAI Codex via OAuth sign-in
+  - Gemini via API key (Google OpenAI-compatible endpoint)
 - Assistant behavior modes:
   - `Respond when prompted` (manual chat only)
   - `Respond automatically` (assistant auto-comments on completed terminal output)
@@ -25,9 +26,16 @@ SmartShell is an Electron desktop app with:
 
 - Node.js 18+
 - npm
-- Linux/macOS build prerequisites for `node-pty` (example Ubuntu: `build-essential` and `python3`)
+- Build prerequisites for native `node-pty`
 
-If using a local model server (Ollama etc.), start it separately and make sure it exposes OpenAI-compatible endpoints.
+Example dependency install (Ubuntu/Debian):
+
+```bash
+sudo apt update
+sudo apt install -y build-essential python3 make g++
+```
+
+If using a local model server (Ollama etc.), run it separately and ensure it exposes OpenAI-compatible endpoints.
 
 ## Install
 
@@ -36,24 +44,62 @@ npm install
 ```
 
 `postinstall` automatically rebuilds `node-pty` for Electron.
+If native module errors appear, run:
+
+```bash
+npm run rebuild
+```
 
 ## Run
+
+Normal:
 
 ```bash
 npm start
 ```
 
-Dev mode:
+Development (with DevTools):
 
 ```bash
 npm run dev
 ```
 
-Package macOS dmg:
+Package macOS `.dmg`:
 
 ```bash
 npm run build
 ```
+
+## Provider Setup
+
+### 1. Local API Endpoint (Ollama/LM Studio/vLLM)
+
+1. Start your local server (for Ollama: `ollama serve`)
+2. Ensure at least one model is available (for Ollama: `ollama pull <model>`)
+3. In SmartShell settings (`⚙`), select `Local API Endpoint`
+4. Enter server URL (for Ollama default: `http://localhost:11434`)
+5. Click `Fetch Models`, choose a model, then save
+
+### 2. OpenAI Codex (OAuth)
+
+1. In settings (`⚙`), select `OpenAI Codex`
+2. Click `Sign in with OpenAI` and finish OAuth in browser
+3. Choose a model and save
+
+Current built-in Codex model list:
+- `gpt-5.3-codex`
+- `gpt-5.2-codex`
+- `gpt-5.1-codex-max`
+- `gpt-5.1-codex-mini` (default)
+- `gpt-5.2`
+
+### 3. Gemini (API Key)
+
+1. Create a Gemini API key in Google AI Studio
+2. In settings (`⚙`), select `Gemini API Key`
+3. Paste your key
+4. Click `Fetch Models`
+5. Choose a fetched model and save
 
 ## Configuration
 
@@ -69,7 +115,7 @@ Example:
 
 ```yaml
 llm:
-  source: "local"                  # "local" | "openai"
+  source: "local"                  # "local" | "openai" | "gemini"
   url: "http://localhost:11434"    # used for local source
   model: "llama3.2"
 
@@ -87,20 +133,6 @@ assistant:
 
 systemPrompt: ""                   # empty = built-in default
 ```
-
-## OpenAI Codex Mode
-
-1. Open settings (`⚙`)
-2. Select `OpenAI Codex`
-3. Click `Sign in with OpenAI`
-4. Choose a model and save
-
-Current built-in Codex model list:
-- `gpt-5.3-codex`
-- `gpt-5.2-codex`
-- `gpt-5.1-codex-max`
-- `gpt-5.1-codex-mini` (default)
-- `gpt-5.2`
 
 ## How Context Works
 
