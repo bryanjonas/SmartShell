@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a1220"/>
+      <stop offset="100%" stop-color="#14253e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="220" fill="url(#bg)"/>
+
+  <rect x="192" y="238" width="640" height="548" rx="54" fill="#0d182b" stroke="#2a3f61" stroke-width="10"/>
+
+  <path d="M296 422 L420 512 L296 602" fill="none" stroke="#60a5fa" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="456" y="572" width="180" height="28" rx="14" fill="#60a5fa"/>
+
+  <g transform="translate(610 308)">
+    <circle cx="88" cy="88" r="88" fill="url(#accent)"/>
+    <path d="M52 90 L80 60 L106 100 L130 72" fill="none" stroke="#ecfeff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="80" cy="60" r="8" fill="#ecfeff"/>
+    <circle cx="106" cy="100" r="8" fill="#ecfeff"/>
+    <circle cx="130" cy="72" r="8" fill="#ecfeff"/>
+  </g>
+</svg>

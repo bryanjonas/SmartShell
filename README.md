@@ -1,36 +1,41 @@
 # SmartShell
 
-A split-pane desktop terminal with an AI assistant powered by Ollama.
+![SmartShell Icon](assets/icon.png)
 
-## Layout
+SmartShell is an Electron desktop app with:
+- A real PTY terminal on the left
+- An AI assistant on the right
+- Shared context between them, so the assistant can explain what just happened in your shell
 
-```
-┌─────────────────────────┬──────────────────────────┐
-│  Terminal                │  AI Assistant            │
-│                          │                          │
-│  $ ssh user@host         │  Ask me about your       │
-│  $ ls -la                │  terminal session...     │
-│  total 48                │                          │
-│  drwxr-xr-x ...          │  [__________________]    │
-└─────────────────────────┴──────────────────────────┘
-```
+## Features
 
-- **Left pane**: Full interactive terminal (PTY-based). SSH, vim, htop — everything works.
-- **Right pane**: Chat with an LLM that knows about the commands you've run and their output.
-- **Drag** the center divider to resize the panes.
+- Full interactive terminal (`node-pty` + `xterm.js`)
+- Streaming AI chat responses
+- Terminal-aware context (recent commands + output are appended to the system prompt)
+- LLM source switching:
+  - Local OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, etc.)
+  - OpenAI Codex via OAuth sign-in
+- Assistant behavior modes:
+  - `Respond when prompted` (manual chat only)
+  - `Respond automatically` (assistant auto-comments on completed terminal output)
+  - `Auto-run commands` (UI placeholder, not implemented)
+- Configurable system prompt from settings
 
-## Prerequisites
+## Requirements
 
-1. **Node.js** (v18+) and **npm**
-2. **Ollama** running locally: `ollama serve`
-3. A model pulled in Ollama, e.g.: `ollama pull llama3.2`
-4. Build tools for native modules: `sudo apt install build-essential python3`
+- Node.js 18+
+- npm
+- Linux/macOS build prerequisites for `node-pty` (example Ubuntu: `build-essential` and `python3`)
 
-## Setup
+If using a local model server (Ollama etc.), start it separately and make sure it exposes OpenAI-compatible endpoints.
+
+## Install
 
 ```bash
-npm install    # installs dependencies and rebuilds node-pty for Electron
+npm install
 ```
+
+`postinstall` automatically rebuilds `node-pty` for Electron.
 
 ## Run
 
@@ -38,28 +43,74 @@ npm install    # installs dependencies and rebuilds node-pty for Electron
 npm start
 ```
 
+Dev mode:
+
+```bash
+npm run dev
+```
+
+Package macOS dmg:
+
+```bash
+npm run build
+```
+
 ## Configuration
 
-Edit `config.yaml` in the project root:
+`config.yaml` is loaded from project root. If missing, defaults are used.
+
+Start from:
+
+```bash
+cp config.default.yaml config.yaml
+```
+
+Example:
 
 ```yaml
 llm:
-  url: "http://localhost:11434"   # Ollama base URL
-  model: "llama3.2"              # Model name (must be pulled)
+  source: "local"                  # "local" | "openai"
+  url: "http://localhost:11434"    # used for local source
+  model: "llama3.2"
 
 terminal:
-  shell: ""        # Leave empty to use $SHELL env var
+  shell: ""                        # empty = $SHELL
   fontSize: 14
   fontFamily: "Cascadia Code, Fira Code, Consolas, monospace"
 
 context:
-  maxEntries: 10        # How many recent commands the LLM sees
-  maxOutputChars: 2000  # Max chars of output per command stored
+  maxEntries: 10
+  maxOutputChars: 2000
+
+assistant:
+  mode: "prompted"                 # prompted | automatic | autorun
+
+systemPrompt: ""                   # empty = built-in default
 ```
 
-## How it works
+## OpenAI Codex Mode
 
-1. Every command you run in the terminal is captured (command + output).
-2. The last 10 commands are included as context in the LLM system prompt.
-3. When you send a message in the chat, the LLM responds with awareness of your terminal session.
-4. The LLM can suggest commands, interpret errors, and explain output.
+1. Open settings (`⚙`)
+2. Select `OpenAI Codex`
+3. Click `Sign in with OpenAI`
+4. Choose a model and save
+
+Current built-in Codex model list:
+- `gpt-5.3-codex`
+- `gpt-5.2-codex`
+- `gpt-5.1-codex-max`
+- `gpt-5.1-codex-mini` (default)
+- `gpt-5.2`
+
+## How Context Works
+
+- Keystrokes are tracked to detect command boundaries.
+- Terminal output is cleaned (ANSI/OSC stripped) and attached to the command.
+- A rolling buffer of recent entries is injected into the system prompt on each request.
+
+In `Respond automatically` mode, SmartShell also triggers proactive assistant comments when new command output is finalized.
+
+## Notes
+
+- `config.yaml` is gitignored and may contain local OAuth tokens.
+- `nodeIntegration` is enabled in the renderer; do not load untrusted content.

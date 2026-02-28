@@ -13,12 +13,15 @@
   "build": {
     "appId": "com.smartshell.app",
     "productName": "SmartShell",
+    "icon": "assets/icon.png",
     "mac": {
       "target": "dmg",
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.png"
     },
     "files": [
       "src/**/*",
+      "assets/**/*",
       "config.default.yaml",
       "config.yaml"
     ],
