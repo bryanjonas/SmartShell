@@ -28,11 +28,11 @@ SmartShell is an Electron desktop app with:
 - npm
 - Build prerequisites for native `node-pty`
 
-Example dependency install (Ubuntu/Debian):
+Full dependency install (Debian/Ubuntu):
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential python3 make g++
+sudo apt install -y nodejs npm build-essential python3 make g++
 ```
 
 If using a local model server (Ollama etc.), run it separately and ensure it exposes OpenAI-compatible endpoints.
