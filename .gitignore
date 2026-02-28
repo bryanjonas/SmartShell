@@ -1,0 +1,19 @@
+# Claude Code local settings
+.claude/
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+
+# Local config (contains personal server URLs/credentials)
+config.yaml
+
+# macOS
+.DS_Store
+
+# Logs
+npm-debug.log*
+*.log

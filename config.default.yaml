@@ -1,0 +1,22 @@
+# SmartShell Default Configuration
+# Copy to config.yaml and edit to customize
+
+llm:
+  # Base URL of the Ollama instance
+  url: "http://localhost:11434"
+  # Model to use - must be pulled first (e.g., `ollama pull llama3.2`)
+  model: "llama3.2"
+
+terminal:
+  # Shell to launch - leave empty to use $SHELL env var
+  shell: ""
+  # xterm.js font size (px)
+  fontSize: 14
+  # xterm.js font family
+  fontFamily: "Cascadia Code, Fira Code, Consolas, monospace"
+
+context:
+  # Number of (command, output) pairs to keep for LLM context
+  maxEntries: 10
+  # Max characters of output stored per command (prevents huge outputs)
+  maxOutputChars: 2000

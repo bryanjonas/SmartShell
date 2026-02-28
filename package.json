@@ -1,0 +1,42 @@
+{
+  "name": "smartshell",
+  "version": "1.0.0",
+  "description": "Split-pane terminal with LLM assistant",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "rebuild": "electron-rebuild -f -w node-pty",
+    "postinstall": "electron-rebuild -f -w node-pty",
+    "build": "electron-builder --mac",
+    "dev": "ELECTRON_RUN_AS_NODE= NODE_ENV=development electron ."
+  },
+  "build": {
+    "appId": "com.smartshell.app",
+    "productName": "SmartShell",
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
+    },
+    "files": [
+      "src/**/*",
+      "config.default.yaml",
+      "config.yaml"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/node-pty/**/*"
+    ]
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0",
+    "js-yaml": "^4.1.1",
+    "node-pty": "^1.0.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "electron": "^40.6.1",
+    "electron-builder": "^26.8.1"
+  }
+}

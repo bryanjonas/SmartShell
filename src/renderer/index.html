@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SmartShell</title>
+  <link rel="stylesheet" href="styles.css">
+  <!-- xterm.js CSS -->
+  <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- LEFT PANE: Terminal -->
+    <div id="terminal-pane">
+      <div class="pane-header">
+        <span class="pane-label">Terminal</span>
+        <span id="terminal-status" class="status-indicator"></span>
+      </div>
+      <div id="terminal-container"></div>
+    </div>
+
+    <!-- DRAG HANDLE -->
+    <div id="resize-handle" title="Drag to resize"></div>
+
+    <!-- RIGHT PANE: LLM Chat -->
+    <div id="chat-pane">
+      <div class="pane-header">
+        <span class="pane-label">AI Assistant</span>
+        <div class="header-right">
+          <button id="settings-toggle-btn" class="settings-toggle" title="Configure LLM provider">⚙</button>
+          <span id="model-label" class="model-badge"></span>
+        </div>
+      </div>
+
+      <!-- SETTINGS PANEL (overlays chat content when open) -->
+      <div id="settings-panel" class="settings-panel hidden">
+        <div class="settings-section">
+          <label class="settings-label" for="settings-url">Server URL</label>
+          <div class="settings-row">
+            <input id="settings-url" type="text" class="settings-input"
+              placeholder="http://localhost:11434" spellcheck="false" autocomplete="off">
+            <button id="settings-fetch-btn" class="settings-fetch-btn">Fetch Models</button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <label class="settings-label" for="settings-model">Model</label>
+          <select id="settings-model" class="settings-input settings-select">
+            <option value="">— fetch models first —</option>
+          </select>
+        </div>
+        <div class="settings-actions">
+          <span id="settings-status" class="settings-status"></span>
+          <button id="settings-cancel-btn" class="settings-btn-secondary">Cancel</button>
+          <button id="settings-save-btn" class="settings-btn-primary">Save</button>
+        </div>
+      </div>
+
+      <div id="message-list">
+        <div class="message assistant">
+          <div class="message-role">Assistant</div>
+          <div class="message-body">
+            Hello! I'm your terminal assistant. Run some commands on the left and I'll help you interpret them, diagnose errors, or suggest what to do next.
+          </div>
+        </div>
+      </div>
+      <div id="chat-input-area">
+        <textarea
+          id="chat-input"
+          placeholder="Ask about your terminal session... (Enter to send, Shift+Enter for newline)"
+          rows="3"
+          spellcheck="false"
+        ></textarea>
+        <button id="send-btn">Send</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
