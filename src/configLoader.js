@@ -1,38 +1,45 @@
 'use strict';
 
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
 
+// Settings that live in config.yaml — manually editable by the user.
 const DEFAULTS = {
-  llm: {
-    url:                'http://localhost:11434',
-    model:              'llama3.2',
-    source:             'local',  // 'local' | 'openai' | 'gemini'
-    openaiAccessToken:  '',       // main-process only — never sent to renderer
-    openaiRefreshToken: '',       // main-process only — never sent to renderer
-    openaiTokenExpiry:  0,        // unix ms timestamp; 0 = unknown
-    geminiApiKey:       ''        // stored locally; never sent to renderer
-  },
   terminal: {
-    shell: '',
-    fontSize: 14,
+    shell:      '',
+    fontSize:   14,
     fontFamily: 'Cascadia Code, Fira Code, Consolas, monospace'
   },
   context: {
-    maxEntries: 10,
+    maxEntries:    10,
     maxOutputChars: 2000
   },
   assistant: {
     mode: 'prompted' // 'prompted' | 'automatic' | 'autorun'
   },
-  systemPrompt: ''  // empty = use built-in default; terminal context always appended
+  systemPrompt: '' // empty = use built-in default; terminal context always appended
 };
 
+// LLM settings managed by the in-app settings panel.
+// Stored in app.getPath('userData')/llm-settings.json — never in the repo.
+const LLM_DEFAULTS = {
+  source:             'local', // 'local' | 'openai' | 'gemini'
+  url:                'http://localhost:11434',
+  model:              'llama3.2',
+  openaiAccessToken:  '',
+  openaiRefreshToken: '',
+  openaiTokenExpiry:  0,   // unix ms; 0 = unknown
+  geminiApiKey:       ''
+};
+
+// Merges source into target, but only for keys already present in target.
+// This prevents unknown keys in config.yaml from polluting the config object.
 function deepMerge(target, source) {
   if (!source || typeof source !== 'object') return target;
   const result = { ...target };
-  for (const key of Object.keys(source)) {
+  for (const key of Object.keys(target)) {
+    if (!(key in source)) continue;
     if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
       result[key] = deepMerge(target[key] || {}, source[key]);
     } else if (source[key] !== undefined && source[key] !== null) {
@@ -43,9 +50,8 @@ function deepMerge(target, source) {
 }
 
 function loadConfig() {
-  // Look for config.yaml in the project root (next to package.json)
   const projectRoot = path.join(__dirname, '..');
-  const configPath = path.join(projectRoot, 'config.yaml');
+  const configPath  = path.join(projectRoot, 'config.yaml');
 
   if (fs.existsSync(configPath)) {
     try {
@@ -61,10 +67,66 @@ function loadConfig() {
   return { ...DEFAULTS };
 }
 
+// Writes only the config.yaml fields back — never touches LLM settings.
 function saveConfig(config) {
   const projectRoot = path.join(__dirname, '..');
-  const configPath = path.join(projectRoot, 'config.yaml');
-  fs.writeFileSync(configPath, yaml.dump(config), 'utf8');
+  const configPath  = path.join(projectRoot, 'config.yaml');
+  const toWrite = {
+    terminal:     config.terminal,
+    context:      config.context,
+    assistant:    config.assistant,
+    systemPrompt: config.systemPrompt || ''
+  };
+  fs.writeFileSync(configPath, yaml.dump(toWrite), 'utf8');
 }
 
-module.exports = { loadConfig, saveConfig };
+function _llmSettingsPath() {
+  const { app } = require('electron');
+  return path.join(app.getPath('userData'), 'llm-settings.json');
+}
+
+function loadLLMSettings() {
+  const p = _llmSettingsPath();
+
+  if (fs.existsSync(p)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+      return { ...LLM_DEFAULTS, ...raw };
+    } catch (err) {
+      console.error('[configLoader] Failed to load llm-settings.json:', err.message);
+      return { ...LLM_DEFAULTS };
+    }
+  }
+
+  // First run after upgrade — migrate any llm: block from config.yaml.
+  const projectRoot = path.join(__dirname, '..');
+  const configPath  = path.join(projectRoot, 'config.yaml');
+  if (fs.existsSync(configPath)) {
+    try {
+      const raw = yaml.load(fs.readFileSync(configPath, 'utf8'));
+      if (raw && raw.llm && typeof raw.llm === 'object') {
+        const migrated = { ...LLM_DEFAULTS, ...raw.llm };
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(p, JSON.stringify(migrated, null, 2), 'utf8');
+        console.log('[configLoader] Migrated llm settings from config.yaml → llm-settings.json');
+        return migrated;
+      }
+    } catch (err) {
+      console.error('[configLoader] Migration check failed:', err.message);
+    }
+  }
+
+  return { ...LLM_DEFAULTS };
+}
+
+function saveLLMSettings(settings) {
+  try {
+    const p = _llmSettingsPath();
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(settings, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[configLoader] Failed to save llm-settings.json:', err.message);
+  }
+}
+
+module.exports = { loadConfig, saveConfig, loadLLMSettings, saveLLMSettings };

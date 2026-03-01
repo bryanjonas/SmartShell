@@ -1,28 +1,9 @@
 # SmartShell Default Configuration
-# Copy to config.yaml and edit to customize
-
-llm:
-  # LLM source: "local" (Ollama/vLLM/LM Studio), "openai" (OpenAI Codex OAuth), or "gemini" (Gemini API key)
-  source: "local"
-
-  # ── Local endpoint settings (used when source = "local") ──
-  # Base URL of the OpenAI-compatible server
-  url: "http://localhost:11434"
-  # Model to use — must be pulled first (e.g., `ollama pull llama3.2`)
-  model: "llama3.2"
-
-  # ── OpenAI Codex settings (used when source = "openai") ──
-  # Authentication is handled via OAuth 2.0 + PKCE — no credentials needed here.
-  # Click "Sign in with OpenAI" in Settings to authorize via browser.
-  # Tokens are stored below after a successful sign-in (managed automatically).
-  # openaiAccessToken:  ""   # stored automatically after sign-in
-  # openaiRefreshToken: ""   # stored automatically after sign-in
-  # openaiTokenExpiry:  0    # stored automatically after sign-in
-
-  # ── Gemini settings (used when source = "gemini") ──
-  # Uses Gemini's OpenAI-compatible endpoint.
-  # Get an API key from Google AI Studio and paste in Settings.
-  # geminiApiKey: ""          # stored locally after save
+# Copy to config.yaml and edit to customize.
+#
+# LLM provider settings (URL, model, API keys) are managed via the in-app
+# settings panel (⚙) and stored separately in your OS user-data directory.
+# They are never stored here.
 
 terminal:
   # Shell to launch - leave empty to use $SHELL env var

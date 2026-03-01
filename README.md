@@ -118,36 +118,26 @@ Current built-in Codex model list:
 
 ## Configuration
 
-`config.yaml` is loaded from project root. If missing, defaults are used.
+LLM provider settings (URL, model, API keys, OAuth tokens) are managed exclusively
+through the in-app settings panel (`⚙`). They are stored in your OS user-data directory
+and are never written to `config.yaml` or the project directory.
 
-Start from:
+`config.yaml` controls terminal appearance and assistant behavior. If missing, defaults
+are used. Start from the provided template:
 
 ```bash
 cp config.default.yaml config.yaml
 ```
 
-Example:
-
-```yaml
-llm:
-  source: "local"                  # "local" | "openai" | "gemini"
-  url: "http://localhost:11434"    # used for local source
-  model: "llama3.2"
-
-terminal:
-  shell: ""                        # empty = $SHELL
-  fontSize: 14
-  fontFamily: "Cascadia Code, Fira Code, Consolas, monospace"
-
-context:
-  maxEntries: 10
-  maxOutputChars: 2000
-
-assistant:
-  mode: "prompted"                 # prompted | automatic | autorun
-
-systemPrompt: ""                   # empty = built-in default
-```
+| Key | Default | Description |
+|-----|---------|-------------|
+| `terminal.shell` | `""` | Shell to launch; empty uses `$SHELL` |
+| `terminal.fontSize` | `14` | xterm.js font size (px) |
+| `terminal.fontFamily` | `"Cascadia Code, ..."` | xterm.js font family |
+| `context.maxEntries` | `10` | Command/output pairs kept for LLM context |
+| `context.maxOutputChars` | `2000` | Max output chars stored per command |
+| `assistant.mode` | `"prompted"` | `prompted` \| `automatic` \| `autorun` |
+| `systemPrompt` | `""` | Custom system prompt; empty uses built-in default |
 
 ## How Context Works
 
@@ -159,5 +149,5 @@ In `Respond automatically` mode, SmartShell also triggers proactive assistant co
 
 ## Notes
 
-- `config.yaml` is gitignored and may contain local OAuth tokens.
 - `nodeIntegration` is enabled in the renderer; do not load untrusted content.
+- `config.yaml` is gitignored. LLM settings are stored separately in your OS user-data directory (`~/Library/Application Support/SmartShell/` on macOS).

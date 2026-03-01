@@ -16,13 +16,14 @@ function startDevWatcher() {
     }, 150);
   });
 }
-const { loadConfig, saveConfig } = require('./configLoader');
+const { loadConfig, saveConfig, loadLLMSettings, saveLLMSettings } = require('./configLoader');
 const ptyManager = require('./ptyManager');
 const contextBuffer = require('./contextBuffer');
 const LLMClient = require('./ollamaClient');
 
 let win;
 let config;
+let llmSettings;
 let ollamaClient;
 let pendingOAuth = null; // { server } — for cleanup on retry
 let ptyOutputHandler = null;
@@ -65,9 +66,9 @@ const BASE_SYSTEM_PROMPT = [
 // ---- Codex token refresh ----
 // Refreshes the stored access token if it expires within the next 5 minutes.
 async function _refreshCodexTokenIfNeeded() {
-  if (!config.llm.openaiRefreshToken) return;
+  if (!llmSettings.openaiRefreshToken) return;
   const FIVE_MIN = 5 * 60 * 1000;
-  const expiry   = config.llm.openaiTokenExpiry;
+  const expiry   = llmSettings.openaiTokenExpiry;
   if (expiry && Date.now() < expiry - FIVE_MIN) return; // still valid
 
   try {
@@ -77,7 +78,7 @@ async function _refreshCodexTokenIfNeeded() {
       body: new URLSearchParams({
         grant_type:    'refresh_token',
         client_id:     CODEX_CLIENT_ID,
-        refresh_token: config.llm.openaiRefreshToken
+        refresh_token: llmSettings.openaiRefreshToken
       }).toString()
     });
 
@@ -85,11 +86,11 @@ async function _refreshCodexTokenIfNeeded() {
 
     const data = await tokenRes.json();
     if (data.access_token) {
-      config.llm.openaiAccessToken  = data.access_token;
-      config.llm.openaiRefreshToken = data.refresh_token || config.llm.openaiRefreshToken;
-      config.llm.openaiTokenExpiry  = data.expires_in ? Date.now() + data.expires_in * 1000 : 0;
-      saveConfig(config);
-      ollamaClient = createLLMClientForSource(config.llm.source, config.llm.url, config.llm.model, config.llm.openaiAccessToken);
+      llmSettings.openaiAccessToken  = data.access_token;
+      llmSettings.openaiRefreshToken = data.refresh_token || llmSettings.openaiRefreshToken;
+      llmSettings.openaiTokenExpiry  = data.expires_in ? Date.now() + data.expires_in * 1000 : 0;
+      saveLLMSettings(llmSettings);
+      ollamaClient = createLLMClientForSource(llmSettings.source, llmSettings.url, llmSettings.model, llmSettings.openaiAccessToken);
     }
   } catch (_) {}
 }
@@ -103,7 +104,7 @@ function createLLMClientForSource(source, url, model, openaiToken = null) {
     return new LLMClient(
       GEMINI_OPENAI_BASE_URL,
       model,
-      config.llm.geminiApiKey || null,
+      llmSettings.geminiApiKey || null,
       false,
       '/v1/responses',
       '/v1beta/openai/chat/completions',
@@ -155,7 +156,7 @@ async function _runAutoCommentForLatest() {
   const latestIndex = entries.length;
   if (latestIndex <= lastAutoEntryCount) return;
 
-  if (config.llm.source === 'openai') {
+  if (llmSettings.source === 'openai') {
     await _refreshCodexTokenIfNeeded();
   }
 
@@ -190,17 +191,18 @@ async function _runAutoCommentForLatest() {
 }
 
 function createWindow() {
-  config = loadConfig();
+  config      = loadConfig();
+  llmSettings = loadLLMSettings();
 
   // Apply context settings from config
   contextBuffer.maxEntries     = config.context.maxEntries;
   contextBuffer.maxOutputChars = config.context.maxOutputChars;
 
   ollamaClient = createLLMClientForSource(
-    config.llm.source,
-    config.llm.url,
-    config.llm.model,
-    config.llm.openaiAccessToken || null
+    llmSettings.source,
+    llmSettings.url,
+    llmSettings.model,
+    llmSettings.openaiAccessToken || null
   );
 
   win = new BrowserWindow({
@@ -312,7 +314,7 @@ ipcMain.on('pty:resize', (_event, cols, rows) => {
 
 // ---- IPC: Chat message ----
 ipcMain.on('chat:send', async (_event, userMessage) => {
-  if (config.llm.source === 'openai') {
+  if (llmSettings.source === 'openai') {
     await _refreshCodexTokenIfNeeded();
   }
 
@@ -341,7 +343,7 @@ ipcMain.handle('llm:fetch-models', async (_event, { url, source, apiKey }) => {
     if (source === 'openai') return { error: 'OpenAI model discovery is not supported in-app.' };
     let client;
     if (source === 'gemini') {
-      const token = (apiKey || '').trim() || config.llm.geminiApiKey || null;
+      const token = (apiKey || '').trim() || llmSettings.geminiApiKey || null;
       if (!token) return { error: 'Gemini API key is required.' };
       client = new LLMClient(
         GEMINI_OPENAI_BASE_URL,
@@ -366,25 +368,26 @@ ipcMain.handle('llm:fetch-models', async (_event, { url, source, apiKey }) => {
 ipcMain.handle('llm:save-config', (_event, payload) => {
   // payload: { source, systemPrompt, url?, model }
   try {
-    config.llm.source   = payload.source;
+    llmSettings.source  = payload.source;
     config.systemPrompt = payload.systemPrompt || '';
 
     if (payload.source === 'local') {
-      config.llm.url   = payload.url;
-      config.llm.model = payload.model;
+      llmSettings.url   = payload.url;
+      llmSettings.model = payload.model;
       ollamaClient = createLLMClientForSource('local', payload.url, payload.model, null);
     } else if (payload.source === 'gemini') {
       const apiKey = (payload.apiKey || '').trim();
-      if (apiKey) config.llm.geminiApiKey = apiKey;
-      if (!config.llm.geminiApiKey) return { error: 'Gemini API key is required.' };
-      config.llm.model = payload.model;
-      ollamaClient = createLLMClientForSource('gemini', config.llm.url, payload.model, null);
+      if (apiKey) llmSettings.geminiApiKey = apiKey;
+      if (!llmSettings.geminiApiKey) return { error: 'Gemini API key is required.' };
+      llmSettings.model = payload.model;
+      ollamaClient = createLLMClientForSource('gemini', llmSettings.url, payload.model, null);
     } else {
       // openai (Codex)
-      config.llm.model = payload.model;
-      ollamaClient = createLLMClientForSource('openai', config.llm.url, payload.model, config.llm.openaiAccessToken || null);
+      llmSettings.model = payload.model;
+      ollamaClient = createLLMClientForSource('openai', llmSettings.url, payload.model, llmSettings.openaiAccessToken || null);
     }
 
+    saveLLMSettings(llmSettings);
     saveConfig(config);
     return { ok: true };
   } catch (err) {
@@ -396,11 +399,11 @@ ipcMain.handle('llm:save-config', (_event, payload) => {
 ipcMain.handle('config:get', () => {
   return {
     llm: {
-      url:             config.llm.url,
-      model:           config.llm.model,
-      source:          config.llm.source   || 'local',
-      openaiConnected: !!(config.llm.openaiAccessToken),
-      geminiHasKey:    !!(config.llm.geminiApiKey)
+      url:             llmSettings.url,
+      model:           llmSettings.model,
+      source:          llmSettings.source          || 'local',
+      openaiConnected: !!(llmSettings.openaiAccessToken),
+      geminiHasKey:    !!(llmSettings.geminiApiKey)
       // tokens are never sent to the renderer
     },
     terminal:     config.terminal,
@@ -530,12 +533,12 @@ ipcMain.handle('openai:start-oauth', async (_event) => {
           return;
         }
 
-        config.llm.openaiAccessToken  = accessToken;
-        config.llm.openaiRefreshToken = refreshToken;
-        config.llm.openaiTokenExpiry  = expiresIn ? Date.now() + expiresIn * 1000 : 0;
-        saveConfig(config);
+        llmSettings.openaiAccessToken  = accessToken;
+        llmSettings.openaiRefreshToken = refreshToken;
+        llmSettings.openaiTokenExpiry  = expiresIn ? Date.now() + expiresIn * 1000 : 0;
+        saveLLMSettings(llmSettings);
 
-        ollamaClient = createLLMClientForSource('openai', config.llm.url, config.llm.model, config.llm.openaiAccessToken);
+        ollamaClient = createLLMClientForSource('openai', llmSettings.url, llmSettings.model, llmSettings.openaiAccessToken);
         resolve({ ok: true });
       } catch (fetchErr) {
         resolve({ error: `Token exchange request failed: ${fetchErr.message}` });
@@ -552,11 +555,11 @@ ipcMain.handle('openai:start-oauth', async (_event) => {
 // ---- IPC: Disconnect from OpenAI Codex (revoke stored tokens) ----
 ipcMain.handle('openai:disconnect', (_event) => {
   try {
-    config.llm.openaiAccessToken  = '';
-    config.llm.openaiRefreshToken = '';
-    config.llm.openaiTokenExpiry  = 0;
-    saveConfig(config);
-    ollamaClient = createLLMClientForSource('openai', config.llm.url, config.llm.model, null);
+    llmSettings.openaiAccessToken  = '';
+    llmSettings.openaiRefreshToken = '';
+    llmSettings.openaiTokenExpiry  = 0;
+    saveLLMSettings(llmSettings);
+    ollamaClient = createLLMClientForSource('openai', llmSettings.url, llmSettings.model, null);
     return { ok: true };
   } catch (err) {
     return { error: err.message };
