@@ -35,13 +35,31 @@
       <!-- SETTINGS PANEL (overlays chat content when open) -->
       <div id="settings-panel" class="settings-panel hidden">
 
+        <!-- ── ACTIVE SELECTION ── -->
+        <div class="settings-section">
+          <label class="settings-label">Active Provider / Model</label>
+          <div class="settings-row">
+            <select id="settings-active-provider" class="settings-input settings-select">
+              <option value="local">Local API Endpoint</option>
+              <option value="openai">OpenAI Codex</option>
+              <option value="gemini">Gemini OAuth</option>
+            </select>
+            <select id="settings-active-model" class="settings-input settings-select">
+              <option value="">— select model below —</option>
+            </select>
+          </div>
+          <p class="settings-note">
+            Use this top-level selector to choose which provider/model SmartShell will use. Provider-specific settings remain below.
+          </p>
+        </div>
+
         <!-- ── LLM SOURCE SELECTOR ── -->
         <div class="settings-section">
           <label class="settings-label">LLM Source</label>
           <div class="settings-source-tabs">
             <button id="source-local-btn"  class="settings-source-tab active" data-source="local">Local API Endpoint</button>
             <button id="source-openai-btn" class="settings-source-tab"        data-source="openai">OpenAI Codex</button>
-            <button id="source-gemini-btn" class="settings-source-tab"        data-source="gemini">Gemini API Key</button>
+            <button id="source-gemini-btn" class="settings-source-tab"        data-source="gemini">Gemini OAuth</button>
           </div>
         </div>
 
@@ -97,12 +115,20 @@
         <!-- ── GEMINI SECTION ── -->
         <div id="gemini-section" class="hidden">
           <div class="settings-section">
-            <label class="settings-label" for="settings-gemini-key">API Key</label>
-            <input id="settings-gemini-key" type="password" class="settings-input"
-              placeholder="AIza..." spellcheck="false" autocomplete="off">
+            <label class="settings-label" for="settings-gemini-client-id">OAuth Client ID</label>
+            <input id="settings-gemini-client-id" type="text" class="settings-input"
+              placeholder="Google OAuth Desktop Client ID" spellcheck="false" autocomplete="off">
             <p class="settings-note">
-              Enter your Gemini API key (stored locally in config.yaml). Leave blank to keep the saved key.
+              Configure a Google OAuth Desktop Client ID, then sign in via browser. Tokens are stored locally in config.yaml.
             </p>
+          </div>
+          <div class="settings-section">
+            <label class="settings-label">Account</label>
+            <div id="gemini-auth-status" class="openai-auth-status disconnected">
+              <span id="gemini-auth-text">Not signed in</span>
+              <button id="gemini-connect-btn" class="settings-fetch-btn">Sign in with Google</button>
+              <button id="gemini-disconnect-btn" class="settings-fetch-btn hidden">Sign out</button>
+            </div>
           </div>
           <div class="settings-section">
             <label class="settings-label" for="settings-model-gemini">Model</label>
@@ -126,6 +152,28 @@
             placeholder="Leave blank to use the built-in default. Terminal context is always appended automatically."></textarea>
         </div>
 
+        <!-- ── COMMAND SAFETY ── -->
+        <div class="settings-section">
+          <label class="settings-label" for="settings-command-run-mode">Command Run Safety</label>
+          <select id="settings-command-run-mode" class="settings-input settings-select">
+            <option value="strict">Strict</option>
+            <option value="balanced">Balanced</option>
+            <option value="permissive">Permissive</option>
+          </select>
+          <p class="settings-note">
+            Strict only allows high-confidence low-risk commands to run directly. Balanced confirms most state-changing commands.
+            Permissive allows more commands with confirmation prompts.
+          </p>
+          <label class="settings-label" for="settings-command-allowlist">Allowlist Patterns (one per line)</label>
+          <textarea id="settings-command-allowlist" class="settings-input settings-prompt-textarea"
+            spellcheck="false" rows="3"
+            placeholder="git status&#10;docker ps&#10;npm run"></textarea>
+          <label class="settings-label" for="settings-command-blocklist">Blocklist Patterns (one per line)</label>
+          <textarea id="settings-command-blocklist" class="settings-input settings-prompt-textarea"
+            spellcheck="false" rows="3"
+            placeholder="rm -rf /&#10;mkfs&#10;:(){ :|:&amp; };:"></textarea>
+        </div>
+
         <!-- ── ACTIONS ── -->
         <div class="settings-actions">
           <span id="settings-status" class="settings-status"></span>
@@ -142,6 +190,9 @@
           <option value="automatic">Respond automatically</option>
           <option value="autorun">Auto-run commands</option>
         </select>
+        <button id="context-clear-btn" class="assistant-mode-btn" title="Clear saved terminal context for future AI responses">
+          Clear Context
+        </button>
         <span id="assistant-mode-note" class="assistant-mode-note"></span>
       </div>
 

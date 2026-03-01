@@ -26,6 +26,21 @@ assistant:
   # "autorun"   = reserved (not implemented yet)
   mode: "prompted"
 
+commandPolicy:
+  # Command run safety profile for command cards:
+  # "strict"     = only high-confidence, low-risk commands are directly runnable
+  # "balanced"   = default; read-only runs directly, state-changing asks for confirmation
+  # "permissive" = allows more commands with confirmation prompts
+  runMode: "balanced"
+
+  # Optional allowlist patterns (one per line). If a command starts with one of these,
+  # it is treated as trusted for confidence/risk gating.
+  allowlist: []
+
+  # Optional blocklist patterns (one per line). If a command contains one of these,
+  # direct running is blocked from the UI.
+  blocklist: []
+
 # Custom system prompt for the AI assistant.
 # Leave empty to use the built-in default.
 # The terminal context (recent commands + output) is always appended automatically.

@@ -19,10 +19,10 @@ async function init() {
   termMgr.init(termContainer);
 
   // Initialize chat
-  new ChatManager();
+  const chatMgr = new ChatManager(config);
 
   // Initialize assistant behavior controls
-  initAssistantModeControls(config);
+  initAssistantModeControls(config, chatMgr);
 
   // Initialize settings panel
   const toggleBtn = document.getElementById('settings-toggle-btn');
@@ -31,8 +31,15 @@ async function init() {
     config.llm.source = source;
     config.llm.url    = url || config.llm.url;
     config.llm.model  = model;
-    if (typeof meta.geminiHasKey === 'boolean') {
-      config.llm.geminiHasKey = meta.geminiHasKey;
+    if (typeof meta.geminiConnected === 'boolean') {
+      config.llm.geminiConnected = meta.geminiConnected;
+    }
+    if (typeof meta.geminiClientId === 'string') {
+      config.llm.geminiClientId = meta.geminiClientId;
+    }
+    if (meta.commandPolicy) {
+      config.commandPolicy = meta.commandPolicy;
+      chatMgr.setCommandPolicy(meta.commandPolicy);
     }
     if (modelLabel) modelLabel.textContent = model;
     toggleBtn.classList.remove('active');
@@ -57,10 +64,11 @@ async function init() {
   });
 }
 
-function initAssistantModeControls(config) {
+function initAssistantModeControls(config, chatMgr) {
   const selectEl = document.getElementById('assistant-mode-select');
   const noteEl = document.getElementById('assistant-mode-note');
-  if (!selectEl || !noteEl) return;
+  const clearContextBtn = document.getElementById('context-clear-btn');
+  if (!selectEl || !noteEl || !clearContextBtn) return;
 
   const applyNote = (mode) => {
     if (mode === 'autorun') {
@@ -91,6 +99,23 @@ function initAssistantModeControls(config) {
     config.assistant.mode = requestedMode;
     currentMode = requestedMode;
     applyNote(requestedMode);
+  });
+
+  clearContextBtn.addEventListener('click', async () => {
+    clearContextBtn.disabled = true;
+    const result = await ipcRenderer.invoke('context:clear');
+    clearContextBtn.disabled = false;
+
+    if (result && result.error) {
+      chatMgr.appendSystemMessage(`Failed to clear context: ${result.error}`);
+      return;
+    }
+
+    const count = (result && typeof result.clearedEntries === 'number') ? result.clearedEntries : 0;
+    const remaining = (result && typeof result.remainingEntries === 'number') ? result.remainingEntries : 0;
+    chatMgr.appendSystemMessage(
+      `Cleared terminal context window (${count} entr${count === 1 ? 'y' : 'ies'} removed, ${remaining} remaining).`
+    );
   });
 }
 

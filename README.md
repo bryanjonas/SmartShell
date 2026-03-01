@@ -1,41 +1,50 @@
 # SmartShell
 
-<img src="assets/icon.png" alt="SmartShell Icon" width="160" />
+<img src="assets/icon.png" alt="SmartShell Icon" width="120" />
 
 SmartShell is an Electron desktop app with:
 - A real PTY terminal on the left
 - An AI assistant on the right
-- Shared context between them, so the assistant can explain what just happened in your shell
+- Shared terminal context so the assistant can explain command results and suggest next steps
 
 ## Features
 
 - Full interactive terminal (`node-pty` + `xterm.js`)
 - Streaming AI chat responses
-- Terminal-aware context (recent commands + output are appended to the system prompt)
-- LLM source switching:
+- Provider/model selection in settings (authoritative top-level selector)
+- LLM providers:
   - Local OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, etc.)
-  - OpenAI Codex via OAuth sign-in
-  - Gemini via API key (Google OpenAI-compatible endpoint)
+  - OpenAI Codex via OAuth
+  - Gemini via OAuth (Google OpenAI-compatible endpoint)
 - Assistant behavior modes:
-  - `Respond when prompted` (manual chat only)
-  - `Respond automatically` (assistant auto-comments on completed terminal output)
-  - `Auto-run commands` (UI placeholder, not implemented)
+  - `Respond when prompted`
+  - `Respond automatically`
+  - `Auto-run commands` (UI placeholder; not implemented)
+- Command suggestion cards with:
+  - `Copy` and optional `Run`
+  - Risk-aware gating (`Run`, `Run (Confirm)`, or blocked)
+  - Color-coded alert badges (`Needs Edit`, `Risk: low|medium|high`)
+- Command safety policy in settings:
+  - run mode (`strict` | `balanced` | `permissive`)
+  - allowlist patterns
+  - blocklist patterns
+- Clear context action in UI (`Clear Context`) to flush terminal context window
 - Configurable system prompt from settings
 
 ## Requirements
 
 - Node.js 18+
 - npm
-- Build prerequisites for native `node-pty`
+- Native build prerequisites for `node-pty`
 
-Full dependency install (Debian/Ubuntu):
+### Debian/Ubuntu dependency install
 
 ```bash
 sudo apt update
 sudo apt install -y nodejs npm build-essential python3 make g++
 ```
 
-If using a local model server (Ollama etc.), run it separately and ensure it exposes OpenAI-compatible endpoints.
+If you are using a local model server (Ollama, LM Studio, vLLM), run it separately and ensure it exposes OpenAI-compatible endpoints.
 
 ## Install
 
@@ -52,19 +61,17 @@ npm run rebuild
 
 ## Run
 
-Normal:
-
 ```bash
 npm start
 ```
 
-Development (with DevTools):
+Development mode (with DevTools):
 
 ```bash
 npm run dev
 ```
 
-## Build by Platform
+## Build
 
 ### macOS
 
@@ -87,34 +94,48 @@ Linux packaging is not currently configured in `electron-builder` (current build
 
 ## Provider Setup
 
-### 1. Local API Endpoint (Ollama/LM Studio/vLLM)
+### 1. Local API Endpoint (Ollama / LM Studio / vLLM)
 
 1. Start your local server (for Ollama: `ollama serve`)
 2. Ensure at least one model is available (for Ollama: `ollama pull <model>`)
-3. In SmartShell settings (`⚙`), select `Local API Endpoint`
-4. Enter server URL (for Ollama default: `http://localhost:11434`)
-5. Click `Fetch Models`, choose a model, then save
+3. Open settings (`⚙`) and choose `Local API Endpoint`
+4. Enter server URL (Ollama default: `http://localhost:11434`)
+5. Click `Fetch Models`, select model, and save
 
 ### 2. OpenAI Codex (OAuth)
 
-1. In settings (`⚙`), select `OpenAI Codex`
-2. Click `Sign in with OpenAI` and finish OAuth in browser
+1. Open settings (`⚙`) and choose `OpenAI Codex`
+2. Click `Sign in with OpenAI` and complete OAuth in browser
 3. Choose a model and save
 
-Current built-in Codex model list:
+Built-in OpenAI model list:
 - `gpt-5.3-codex`
 - `gpt-5.2-codex`
 - `gpt-5.1-codex-max`
 - `gpt-5.1-codex-mini` (default)
 - `gpt-5.2`
 
-### 3. Gemini (API Key)
+### 3. Gemini (OAuth)
 
-1. Create a Gemini API key in Google AI Studio
-2. In settings (`⚙`), select `Gemini API Key`
-3. Paste your key
+Gemini OAuth requires your own Google Cloud OAuth desktop client.
+
+Google Cloud setup:
+1. Create/select a Google Cloud project
+2. Enable Gemini API / Generative Language API
+3. Configure OAuth consent screen (and add test users if app is in testing)
+4. Create OAuth client of type `Desktop app`
+5. Copy client ID (`...apps.googleusercontent.com`)
+
+SmartShell setup:
+1. Open settings (`⚙`) and choose `Gemini OAuth`
+2. Paste OAuth client ID
+3. Click `Sign in with Google`
 4. Click `Fetch Models`
-5. Choose a fetched model and save
+5. Select a model and save
+
+References:
+- <https://ai.google.dev/gemini-api/docs/openai>
+- <https://ai.google.dev/gemini-api/docs/oauth>
 
 ## Configuration
 
@@ -137,17 +158,20 @@ cp config.default.yaml config.yaml
 | `context.maxEntries` | `10` | Command/output pairs kept for LLM context |
 | `context.maxOutputChars` | `2000` | Max output chars stored per command |
 | `assistant.mode` | `"prompted"` | `prompted` \| `automatic` \| `autorun` |
+| `commandPolicy.runMode` | `"balanced"` | `strict` \| `balanced` \| `permissive` |
+| `commandPolicy.allowlist` | `[]` | Prefix patterns trusted for command gating |
+| `commandPolicy.blocklist` | `[]` | Substring patterns blocked from direct run |
 | `systemPrompt` | `""` | Custom system prompt; empty uses built-in default |
 
-## How Context Works
+## Context Behavior
 
-- Keystrokes are tracked to detect command boundaries.
-- Terminal output is cleaned (ANSI/OSC stripped) and attached to the command.
-- A rolling buffer of recent entries is injected into the system prompt on each request.
+- Terminal keystrokes/output are tracked and grouped into command/output pairs.
+- A rolling context window is appended to every AI request.
+- `Clear Context` clears this rolling window in-memory for the running app session.
+- In automatic mode, SmartShell can proactively comment on newly completed commands.
 
-In `Respond automatically` mode, SmartShell also triggers proactive assistant comments when new command output is finalized.
+## Security Notes
 
-## Notes
-
-- `nodeIntegration` is enabled in the renderer; do not load untrusted content.
-- `config.yaml` is gitignored. LLM settings are stored separately in your OS user-data directory (`~/Library/Application Support/SmartShell/` on macOS).
+- `config.yaml` is gitignored and may contain local OAuth tokens/secrets.
+- `nodeIntegration` is enabled in renderer; do not load untrusted web content.
+- LLM settings are stored separately in your OS user-data directory (not in repo `config.yaml`).

@@ -4,6 +4,7 @@ const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path   = require('path');
 const http   = require('http');
 const crypto = require('crypto');
+const { spawnSync } = require('child_process');
 
 function startDevWatcher() {
   const fs = require('fs');
@@ -26,6 +27,7 @@ let config;
 let llmSettings;
 let ollamaClient;
 let pendingOAuth = null; // { server } — for cleanup on retry
+let pendingGeminiOAuth = null; // { server } — for cleanup on retry
 let ptyOutputHandler = null;
 let ptyExitHandler = null;
 let autoCommentTimer = null;
@@ -41,6 +43,11 @@ const CODEX_SCOPES      = 'openid profile email offline_access';
 const CODEX_PORT        = 1455;
 const CODEX_BACKEND_BASE_URL = 'https://chatgpt.com/backend-api/codex';
 const GEMINI_OPENAI_BASE_URL = 'https://generativelanguage.googleapis.com';
+const GEMINI_AUTH_URL   = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GEMINI_TOKEN_URL  = 'https://oauth2.googleapis.com/token';
+const GEMINI_REDIRECT_URI = 'http://127.0.0.1:1456/auth/callback';
+const GEMINI_SCOPES     = 'https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/generative-language.retriever';
+const GEMINI_PORT       = 1456;
 
 // ---- PKCE helpers ----
 function generateCodeVerifier()   { return crypto.randomBytes(32).toString('base64url'); }
@@ -58,10 +65,53 @@ const BASE_SYSTEM_PROMPT = [
   '',
   'Guidelines:',
   '- When suggesting shell commands, wrap them in backticks: `command here`',
+  '- Prefix runnable commands with [runnable] and examples/placeholders with [example]',
+  '- Only wrap full runnable commands in backticks; do not backtick filenames, paths, hostnames, or output values',
   '- If the terminal output shows an error, diagnose it directly and suggest a fix',
   '- Keep responses concise — the user is in an active terminal workflow',
   '- You may reference specific lines or values from the terminal output'
 ].join('\n');
+
+function normalizeCommandPolicy(policy) {
+  const mode = policy && typeof policy.runMode === 'string' ? policy.runMode : 'balanced';
+  const allowedMode = new Set(['strict', 'balanced', 'permissive']).has(mode) ? mode : 'balanced';
+  const asList = (value) => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((s) => String(s || '').trim())
+      .filter(Boolean)
+      .slice(0, 200);
+  };
+  return {
+    runMode: allowedMode,
+    allowlist: asList(policy ? policy.allowlist : []),
+    blocklist: asList(policy ? policy.blocklist : [])
+  };
+}
+
+function precheckCommandSyntax(commandText) {
+  const cmd = String(commandText || '').trim();
+  if (!cmd) return { ok: false, skipped: false, reason: 'Empty command.' };
+
+  const unbalanced = (char) => (cmd.split(char).length - 1) % 2 !== 0;
+  if (unbalanced('"')) return { ok: false, skipped: false, reason: 'Unbalanced double quotes.' };
+  if (unbalanced("'")) return { ok: false, skipped: false, reason: 'Unbalanced single quotes.' };
+  if (unbalanced('`')) return { ok: false, skipped: false, reason: 'Unbalanced backticks.' };
+  if (/[|&]\s*$/.test(cmd)) return { ok: false, skipped: false, reason: 'Command ends with an incomplete operator.' };
+  if (/<<\s*$/.test(cmd)) return { ok: false, skipped: false, reason: 'Heredoc operator is incomplete.' };
+
+  const shellExe = config?.terminal?.shell || process.env.SHELL || '/bin/bash';
+  if (!/(?:^|\/)(?:bash|zsh|sh)$/.test(shellExe)) {
+    return { ok: true, skipped: true, reason: `Syntax parser skipped for shell: ${path.basename(shellExe)}` };
+  }
+
+  const parseOnly = spawnSync(shellExe, ['-n', '-c', cmd], { encoding: 'utf8' });
+  if (parseOnly.status !== 0) {
+    const stderr = (parseOnly.stderr || '').trim();
+    return { ok: false, skipped: false, reason: stderr || 'Shell parser rejected command.' };
+  }
+  return { ok: true, skipped: false, reason: '' };
+}
 
 // ---- Codex token refresh ----
 // Refreshes the stored access token if it expires within the next 5 minutes.
@@ -95,6 +145,44 @@ async function _refreshCodexTokenIfNeeded() {
   } catch (_) {}
 }
 
+// ---- Gemini token refresh ----
+// Refreshes the stored Gemini access token if it expires within the next 5 minutes.
+async function _refreshGeminiTokenIfNeeded() {
+  if (!llmSettings.geminiRefreshToken || !llmSettings.geminiClientId) return;
+  const FIVE_MIN = 5 * 60 * 1000;
+  const expiry   = llmSettings.geminiTokenExpiry;
+  if (expiry && Date.now() < expiry - FIVE_MIN) return; // still valid
+
+  try {
+    const tokenRes = await fetch(GEMINI_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type:    'refresh_token',
+        client_id:     llmSettings.geminiClientId,
+        refresh_token: llmSettings.geminiRefreshToken
+      }).toString()
+    });
+
+    if (!tokenRes.ok) return;
+
+    const data = await tokenRes.json();
+    if (data.access_token) {
+      llmSettings.geminiAccessToken  = data.access_token;
+      llmSettings.geminiRefreshToken = data.refresh_token || llmSettings.geminiRefreshToken;
+      llmSettings.geminiTokenExpiry  = data.expires_in ? Date.now() + data.expires_in * 1000 : 0;
+      saveLLMSettings(llmSettings);
+      ollamaClient = createLLMClientForSource(llmSettings.source, llmSettings.url, llmSettings.model, llmSettings.openaiAccessToken);
+    }
+  } catch (_) {}
+}
+
+function _assertGeminiAccessToken() {
+  if (!llmSettings.geminiAccessToken) {
+    throw new Error('Gemini is not authenticated. Open Settings -> Gemini OAuth, sign in with Google, then try again.');
+  }
+}
+
 function createLLMClientForSource(source, url, model, openaiToken = null) {
   if (source === 'openai') {
     // ChatGPT OAuth tokens for Codex are served by the ChatGPT Codex backend.
@@ -104,7 +192,7 @@ function createLLMClientForSource(source, url, model, openaiToken = null) {
     return new LLMClient(
       GEMINI_OPENAI_BASE_URL,
       model,
-      llmSettings.geminiApiKey || null,
+      llmSettings.geminiAccessToken || null,
       false,
       '/v1/responses',
       '/v1beta/openai/chat/completions',
@@ -158,6 +246,9 @@ async function _runAutoCommentForLatest() {
 
   if (llmSettings.source === 'openai') {
     await _refreshCodexTokenIfNeeded();
+  } else if (llmSettings.source === 'gemini') {
+    await _refreshGeminiTokenIfNeeded();
+    _assertGeminiAccessToken();
   }
 
   lastAutoEntryCount = latestIndex;
@@ -314,41 +405,48 @@ ipcMain.on('pty:resize', (_event, cols, rows) => {
 
 // ---- IPC: Chat message ----
 ipcMain.on('chat:send', async (_event, userMessage) => {
-  if (llmSettings.source === 'openai') {
-    await _refreshCodexTokenIfNeeded();
-  }
-
-  // Capture any in-flight terminal entry before prompt construction.
-  contextBuffer.flushPending();
-  const systemPrompt = buildSystemPrompt();
-
-  await ollamaClient.chat(
-    systemPrompt,
-    userMessage,
-    (chunk) => {
-      if (win && !win.isDestroyed()) win.webContents.send('chat:chunk', chunk);
-    },
-    () => {
-      if (win && !win.isDestroyed()) win.webContents.send('chat:done');
-    },
-    (err) => {
-      if (win && !win.isDestroyed()) win.webContents.send('chat:error', err);
+  try {
+    if (llmSettings.source === 'openai') {
+      await _refreshCodexTokenIfNeeded();
+    } else if (llmSettings.source === 'gemini') {
+      await _refreshGeminiTokenIfNeeded();
+      _assertGeminiAccessToken();
     }
-  );
+
+    // Capture any in-flight terminal entry before prompt construction.
+    contextBuffer.flushPending();
+    const systemPrompt = buildSystemPrompt();
+
+    await ollamaClient.chat(
+      systemPrompt,
+      userMessage,
+      (chunk) => {
+        if (win && !win.isDestroyed()) win.webContents.send('chat:chunk', chunk);
+      },
+      () => {
+        if (win && !win.isDestroyed()) win.webContents.send('chat:done');
+      },
+      (err) => {
+        if (win && !win.isDestroyed()) win.webContents.send('chat:error', err);
+      }
+    );
+  } catch (err) {
+    if (win && !win.isDestroyed()) win.webContents.send('chat:error', err.message || String(err));
+  }
 });
 
 // ---- IPC: Fetch models from an OpenAI-compatible endpoint ----
-ipcMain.handle('llm:fetch-models', async (_event, { url, source, apiKey }) => {
+ipcMain.handle('llm:fetch-models', async (_event, { url, source }) => {
   try {
     if (source === 'openai') return { error: 'OpenAI model discovery is not supported in-app.' };
     let client;
     if (source === 'gemini') {
-      const token = (apiKey || '').trim() || llmSettings.geminiApiKey || null;
-      if (!token) return { error: 'Gemini API key is required.' };
+      await _refreshGeminiTokenIfNeeded();
+      _assertGeminiAccessToken();
       client = new LLMClient(
         GEMINI_OPENAI_BASE_URL,
         '',
-        token,
+        llmSettings.geminiAccessToken,
         false,
         '/v1/responses',
         '/v1beta/openai/chat/completions',
@@ -370,15 +468,19 @@ ipcMain.handle('llm:save-config', (_event, payload) => {
   try {
     llmSettings.source  = payload.source;
     config.systemPrompt = payload.systemPrompt || '';
+    if (payload.commandPolicy) {
+      config.commandPolicy = normalizeCommandPolicy(payload.commandPolicy);
+    }
 
     if (payload.source === 'local') {
       llmSettings.url   = payload.url;
       llmSettings.model = payload.model;
       ollamaClient = createLLMClientForSource('local', payload.url, payload.model, null);
     } else if (payload.source === 'gemini') {
-      const apiKey = (payload.apiKey || '').trim();
-      if (apiKey) llmSettings.geminiApiKey = apiKey;
-      if (!llmSettings.geminiApiKey) return { error: 'Gemini API key is required.' };
+      const clientId = (payload.clientId || '').trim();
+      if (clientId) llmSettings.geminiClientId = clientId;
+      if (!llmSettings.geminiClientId) return { error: 'Gemini OAuth Client ID is required.' };
+      if (!llmSettings.geminiAccessToken) return { error: 'Sign in to Gemini first.' };
       llmSettings.model = payload.model;
       ollamaClient = createLLMClientForSource('gemini', llmSettings.url, payload.model, null);
     } else {
@@ -403,14 +505,24 @@ ipcMain.handle('config:get', () => {
       model:           llmSettings.model,
       source:          llmSettings.source          || 'local',
       openaiConnected: !!(llmSettings.openaiAccessToken),
-      geminiHasKey:    !!(llmSettings.geminiApiKey)
+      geminiConnected: !!(llmSettings.geminiAccessToken),
+      geminiClientId:  llmSettings.geminiClientId || ''
       // tokens are never sent to the renderer
     },
     terminal:     config.terminal,
     context:      config.context,
     assistant:    config.assistant,
+    commandPolicy: normalizeCommandPolicy(config.commandPolicy || {}),
     systemPrompt: config.systemPrompt || ''
   };
+});
+
+ipcMain.handle('command:precheck', (_event, commandText) => {
+  try {
+    return precheckCommandSyntax(commandText);
+  } catch (err) {
+    return { ok: false, skipped: false, reason: err.message || String(err) };
+  }
 });
 
 // ---- IPC: Assistant behavior mode ----
@@ -428,6 +540,20 @@ ipcMain.handle('assistant:set-mode', (_event, mode) => {
     _scheduleAutoCommentIfNeeded();
   }
   return { ok: true, mode };
+});
+
+// ---- IPC: Clear terminal context window ----
+ipcMain.handle('context:clear', () => {
+  try {
+    const clearedEntries = contextBuffer.entries.length;
+    contextBuffer.clear();
+    lastAutoEntryCount = 0;
+    clearTimeout(autoCommentTimer);
+    clearTimeout(autoFinalizeTimer);
+    return { ok: true, clearedEntries, remainingEntries: contextBuffer.entries.length };
+  } catch (err) {
+    return { error: err.message };
+  }
 });
 
 // ---- IPC: Start OpenAI Codex OAuth 2.0 + PKCE flow ----
@@ -566,6 +692,145 @@ ipcMain.handle('openai:disconnect', (_event) => {
   }
 });
 
+// ---- IPC: Start Gemini OAuth 2.0 + PKCE flow ----
+ipcMain.handle('gemini:start-oauth', async (_event, { clientId }) => {
+  const effectiveClientId = (clientId || '').trim() || (llmSettings.geminiClientId || '').trim();
+  if (!effectiveClientId) return { error: 'Gemini OAuth Client ID is required.' };
+
+  if (pendingGeminiOAuth && pendingGeminiOAuth.server) {
+    try { pendingGeminiOAuth.server.close(); } catch (_) {}
+    pendingGeminiOAuth = null;
+  }
+
+  const verifier  = generateCodeVerifier();
+  const challenge = generateCodeChallenge(verifier);
+  const state     = generateState();
+
+  let server;
+  try {
+    server = await new Promise((resolve, reject) => {
+      const srv = http.createServer();
+      srv.listen(GEMINI_PORT, '127.0.0.1', () => resolve(srv));
+      srv.on('error', reject);
+    });
+  } catch (err) {
+    return { error: `Failed to start local callback server on port ${GEMINI_PORT}: ${err.message}. Is another instance running?` };
+  }
+
+  pendingGeminiOAuth = { server };
+
+  const authParams = new URLSearchParams({
+    response_type:         'code',
+    client_id:             effectiveClientId,
+    redirect_uri:          GEMINI_REDIRECT_URI,
+    scope:                 GEMINI_SCOPES,
+    access_type:           'offline',
+    prompt:                'consent',
+    state:                 state,
+    code_challenge:        challenge,
+    code_challenge_method: 'S256'
+  });
+  const authUrl = `${GEMINI_AUTH_URL}?${authParams.toString()}`;
+
+  const result = await new Promise((resolve) => {
+    server.on('request', async (req, res) => {
+      let reqUrl;
+      try {
+        reqUrl = new URL(req.url, `http://127.0.0.1:${GEMINI_PORT}`);
+      } catch (_) {
+        res.writeHead(400); res.end(); return;
+      }
+
+      if (reqUrl.pathname !== '/auth/callback') {
+        res.writeHead(404); res.end(); return;
+      }
+
+      const returnedState = reqUrl.searchParams.get('state');
+      const code          = reqUrl.searchParams.get('code');
+      const errorParam    = reqUrl.searchParams.get('error');
+
+      const msg  = errorParam
+        ? 'Authentication failed. You may close this tab.'
+        : 'Authentication complete! You may close this tab.';
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>` +
+        `<body style="font-family:sans-serif;padding:40px;background:#1a1a1a;color:#d4d4d4">` +
+        `<h2 style="color:#4ec9b0">SmartShell</h2><p>${msg}</p></body></html>`;
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(html);
+
+      server.close();
+      pendingGeminiOAuth = null;
+
+      if (errorParam)              { resolve({ error: `OAuth error: ${errorParam}` }); return; }
+      if (returnedState !== state) { resolve({ error: 'OAuth state mismatch — possible CSRF.' }); return; }
+      if (!code)                   { resolve({ error: 'No authorization code received.' }); return; }
+
+      try {
+        const tokenRes = await fetch(GEMINI_TOKEN_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type:    'authorization_code',
+            client_id:     effectiveClientId,
+            code:          code,
+            redirect_uri:  GEMINI_REDIRECT_URI,
+            code_verifier: verifier
+          }).toString()
+        });
+
+        if (!tokenRes.ok) {
+          const detail = await tokenRes.text().catch(() => '');
+          resolve({ error: `Token exchange failed (HTTP ${tokenRes.status}): ${detail}` });
+          return;
+        }
+
+        const tokenData    = await tokenRes.json();
+        const accessToken  = tokenData.access_token;
+        const refreshToken = tokenData.refresh_token || '';
+        const expiresIn    = tokenData.expires_in    || 0;
+
+        if (!accessToken) {
+          resolve({ error: 'Token response did not include access_token.' });
+          return;
+        }
+
+        llmSettings.geminiClientId     = effectiveClientId;
+        llmSettings.geminiAccessToken  = accessToken;
+        llmSettings.geminiRefreshToken = refreshToken;
+        llmSettings.geminiTokenExpiry  = expiresIn ? Date.now() + expiresIn * 1000 : 0;
+        saveLLMSettings(llmSettings);
+
+        if (llmSettings.source === 'gemini') {
+          ollamaClient = createLLMClientForSource('gemini', llmSettings.url, llmSettings.model, null);
+        }
+        resolve({ ok: true });
+      } catch (fetchErr) {
+        resolve({ error: `Token exchange request failed: ${fetchErr.message}` });
+      }
+    });
+
+    shell.openExternal(authUrl);
+  });
+
+  return result;
+});
+
+// ---- IPC: Disconnect from Gemini OAuth ----
+ipcMain.handle('gemini:disconnect', () => {
+  try {
+    llmSettings.geminiAccessToken  = '';
+    llmSettings.geminiRefreshToken = '';
+    llmSettings.geminiTokenExpiry  = 0;
+    saveLLMSettings(llmSettings);
+    if (llmSettings.source === 'gemini') {
+      ollamaClient = createLLMClientForSource('gemini', llmSettings.url, llmSettings.model, null);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 function buildSystemPrompt() {
   const terminalContext = contextBuffer.serialize();
   const entryCount      = contextBuffer.entries.length;
@@ -574,13 +839,25 @@ function buildSystemPrompt() {
     ? config.systemPrompt.trim()
     : BASE_SYSTEM_PROMPT;
 
-  return [
+  const sections = [
     basePrompt,
     '',
-    `## Recent Terminal Activity (${entryCount} command${entryCount !== 1 ? 's' : ''})`,
-    '',
-    terminalContext
-  ].join('\n');
+    `## Recent Terminal Activity (${entryCount} command${entryCount !== 1 ? 's' : ''})`
+  ];
+
+  if (entryCount === 0) {
+    sections.push(
+      '',
+      'Terminal context is currently empty (it may have been cleared).',
+      'Do not claim you can see prior commands. If asked about earlier results, ask the user to run the command again.',
+      '',
+      terminalContext
+    );
+  } else {
+    sections.push('', terminalContext);
+  }
+
+  return sections.join('\n');
 }
 
 // ---- App lifecycle ----
@@ -589,6 +866,9 @@ app.whenReady().then(createWindow);
 app.on('window-all-closed', () => {
   if (pendingOAuth && pendingOAuth.server) {
     try { pendingOAuth.server.close(); } catch (_) {}
+  }
+  if (pendingGeminiOAuth && pendingGeminiOAuth.server) {
+    try { pendingGeminiOAuth.server.close(); } catch (_) {}
   }
   ptyManager.destroy();
   app.quit();

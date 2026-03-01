@@ -1,99 +1,144 @@
 # SmartShell — Claude Code Guide
 
 ## Project Overview
-SmartShell is an Electron desktop app combining a PTY-based terminal (left pane) with an AI chat assistant (right pane). The AI has context awareness of commands run in the terminal. It targets OpenAI-compatible LLM backends (Ollama, LM Studio, llama.cpp, etc.).
+SmartShell is an Electron desktop app with a split layout:
+- Left pane: real interactive shell (PTY)
+- Right pane: AI assistant chat
+
+The assistant receives a rolling window of recent terminal commands/output and can be manually prompted or auto-triggered.
 
 ## Tech Stack
-- **Runtime:** Electron v40 + Node.js v18+
-- **Terminal:** node-pty (PTY) + @xterm/xterm (UI)
-- **LLM:** OpenAI-compatible streaming API via custom client
-- **Config:** js-yaml
-- **Build:** electron-builder (macOS .dmg target)
+- Runtime: Electron v40 + Node.js v18+
+- Terminal: `node-pty` + `@xterm/xterm`
+- LLM transport: OpenAI-compatible streaming APIs via `src/ollamaClient.js`
+- Config: `js-yaml`
+- Packaging: `electron-builder` (macOS `.dmg` target)
 
-## Commands
+## NPM Commands
 
 ```bash
-npm install       # Install deps + auto-rebuilds node-pty for Electron
+npm install       # Install deps + auto-rebuild node-pty for Electron
 npm start         # Launch app
 npm run dev       # Launch with DevTools open
-npm run rebuild   # Manually rebuild node-pty native module
-npm run build     # Package macOS .dmg (electron-builder)
+npm run rebuild   # Manually rebuild node-pty
+npm run build     # Package macOS .dmg
 ```
 
-No test framework is set up.
+No automated test suite is currently configured.
 
 ## Project Structure
 
-```
+```text
 src/
-  main.js              # Electron main process: IPC, PTY lifecycle, LLM orchestration
-  ptyManager.js        # Spawns/manages shell PTY process
-  configLoader.js      # Loads/saves config.yaml (js-yaml)
-  contextBuffer.js     # State machine tracking commands + outputs for LLM context
-  ollamaClient.js      # OpenAI-compatible streaming LLM client
-  preload.js           # Minimal preload (nodeIntegration enabled)
+  main.js              # Main process: IPC, PTY lifecycle, provider auth, prompt assembly
+  ptyManager.js        # PTY spawn/write/resize wrappers
+  configLoader.js      # Loads/saves config.yaml with defaults merge
+  contextBuffer.js     # Command/output rolling context state machine
+  ollamaClient.js      # OpenAI-compatible streaming client (/chat/completions or /responses)
+  preload.js
   renderer/
-    index.html         # App shell HTML
-    renderer.js        # Initialization, drag-to-resize, IPC wiring
-    terminalManager.js # xterm.js wrapper, PTY routing, resize
-    chatManager.js     # Chat UI, streaming message display
-    settingsManager.js # Settings modal, LLM config, model discovery
-    styles.css         # Dark theme stylesheet
-config.default.yaml    # Config template (committed)
-config.yaml            # User config (gitignored — copy from default)
+    index.html         # App shell + settings + assistant bar
+    renderer.js        # Bootstraps terminal/chat/settings and assistant controls
+    terminalManager.js # xterm integration and PTY wiring
+    chatManager.js     # Chat rendering, command extraction, run safety, run actions
+    settingsManager.js # Provider/settings UI + save/fetch/auth orchestration
+    styles.css         # UI styles
+config.default.yaml    # Checked-in template
+config.yaml            # Local runtime config (gitignored)
 ```
 
-## Architecture
+## Current Provider Support
 
-**Process boundary:** Electron main process ↔ renderer via IPC.
+1. Local OpenAI-compatible endpoint (`source: local`)
+2. OpenAI Codex OAuth (`source: openai`)
+3. Gemini OAuth (`source: gemini`)
 
-**IPC channels:**
-- `pty:input` / `pty:output` / `pty:resize` — terminal I/O
-- `chat:send` / `chat:chunk` / `chat:done` / `chat:error` — LLM streaming
-- `llm:fetch-models` / `llm:save-config` — settings
-- `config:get` — fetch current config
-- `openai:start-oauth` / `openai:disconnect` — OAuth flow
+Provider/model selection uses an authoritative top-level selector in settings.
 
-**Context flow:** PTY output → `contextBuffer.js` state machine (IDLE → COLLECTING_OUTPUT) → strips ANSI, detects prompt boundaries → ring buffer of recent (command, output) pairs → injected into LLM system prompt.
+## Command Suggestion Safety System
 
-## LLM Sources
+Implemented in `src/renderer/chatManager.js` with policy data from config:
+- Command extraction from fenced and inline backticks
+- Intent markers supported in model output (`[runnable]`, `[example]`)
+- Confidence scoring + risk classification (`low`/`medium`/`high`)
+- Policy modes:
+  - `strict`
+  - `balanced`
+  - `permissive`
+- Allowlist/blocklist pattern checks
+- UI badges per command card:
+  - status (`Needs Edit`/`Blocked` when applicable)
+  - risk (`Risk: low|medium|high`)
+- Run behavior:
+  - direct run for allowed commands
+  - `Run (Confirm)` + confirm modal for gated commands
+  - pre-run syntax precheck via main IPC (`command:precheck`)
 
-Two sources are supported, toggled in the settings panel (⚙):
+## Context Window Behavior
 
-1. **Local API Endpoint** — any OpenAI-compatible server (Ollama, vLLM, LM Studio, etc.). Configure URL + model.
-2. **OpenAI** — uses OAuth 2.0 + PKCE with a built-in SmartShell client registration. Flow: browser opens `https://auth.openai.com/oauth/authorize` → one-shot local HTTP server catches callback on `http://localhost:1455/auth/callback` → code exchanged for access + refresh token → tokens stored in `config.yaml`.
+Context is stored in `contextBuffer` as recent command/output entries.
+- Appends to every LLM request in `buildSystemPrompt()`
+- `Clear Context` button in the assistant bar calls `context:clear`
+- Clear operation resets entries + pending state + auto timers
+- When empty, system prompt explicitly says context is empty and instructs model not to claim prior command visibility
 
-## System Prompt
+## Key IPC Channels
 
-The settings panel includes an editable system prompt textarea. The built-in default (defined as `BASE_SYSTEM_PROMPT` in [src/main.js](src/main.js) and duplicated in `_getBuiltinDefaultPrompt()` in [src/renderer/settingsManager.js](src/renderer/settingsManager.js)) is used when the field is blank. Terminal context (recent commands + output) is always appended automatically regardless of which prompt is active.
+Terminal:
+- `pty:input`, `pty:output`, `pty:resize`
 
-## Configuration
-Copy `config.default.yaml` to `config.yaml` and edit:
+Chat streaming:
+- `chat:send`, `chat:chunk`, `chat:done`, `chat:error`
+- `autochat:start`, `autochat:chunk`, `autochat:done`, `autochat:error`
+
+Settings/config:
+- `config:get`
+- `llm:fetch-models`
+- `llm:save-config`
+- `assistant:set-mode`
+- `context:clear`
+- `command:precheck`
+
+OAuth:
+- `openai:start-oauth`, `openai:disconnect`
+- `gemini:start-oauth`, `gemini:disconnect`
+
+## Config Keys (effective)
+
 ```yaml
 llm:
-  source: "local"                  # "local" | "openai"
-  url: "http://localhost:11434"    # local endpoint URL
-  model: "llama3.2"
+  source: local|openai|gemini
+  url: string
+  model: string
+  openaiAccessToken/openaiRefreshToken/openaiTokenExpiry
+  geminiClientId/geminiAccessToken/geminiRefreshToken/geminiTokenExpiry
+
 terminal:
-  shell: ""                        # empty = $SHELL
-  fontSize: 14
+  shell: string
+  fontSize: number
+  fontFamily: string
+
 context:
-  maxEntries: 10
-  maxOutputChars: 2000
-systemPrompt: ""                   # empty = built-in default
+  maxEntries: number
+  maxOutputChars: number
+
+assistant:
+  mode: prompted|automatic|autorun
+
+commandPolicy:
+  runMode: strict|balanced|permissive
+  allowlist: string[]
+  blocklist: string[]
+
+systemPrompt: string
 ```
 
-## Native Module Notes
-`node-pty` is a native Node addon. After `npm install`, the postinstall script calls `electron-rebuild` automatically. If the app fails to start with a module error, run `npm run rebuild`.
+## Build/Packaging Notes
+- `electron-builder` currently targets macOS `.dmg`
+- `node-pty` is unpacked in ASAR config
+- `config.yaml` is included in package files list; treat it as sensitive local state
 
-## electron-builder Notes
-- Target: macOS `.dmg` only (app ID: `com.smartshell.app`)
-- ASAR enabled; `node_modules/node-pty/build` is unpacked for native binaries
-- `config.yaml` is included in the build output (ensure it's present before building)
-
-## Key Implementation Details
-- `contextBuffer.js` tracks keypresses char-by-char, handles Backspace (`0x7f`) and Ctrl+U (`0x15`)
-- Prompt detection regex: `/[\$#%>]\s*$/` — may need tuning for non-standard prompts
-- LLM streaming: local endpoints use `/v1/chat/completions`; ChatGPT OAuth Codex uses `https://chatgpt.com/backend-api/codex/responses`
-- Drag-to-resize uses flexbox + `ResizeObserver` → fires `pty:resize` on pane change
-- `nodeIntegration: true` is set — keep this in mind for security if opening untrusted content
+## Security Notes
+- `nodeIntegration: true` and `contextIsolation: false` are currently enabled
+- Do not load untrusted remote content in renderer
+- Keep `config.yaml` out of version control (contains local tokens/secrets)

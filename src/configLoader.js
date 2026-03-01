@@ -18,7 +18,12 @@ const DEFAULTS = {
   assistant: {
     mode: 'prompted' // 'prompted' | 'automatic' | 'autorun'
   },
-  systemPrompt: '' // empty = use built-in default; terminal context always appended
+  commandPolicy: {
+    runMode: 'balanced', // 'strict' | 'balanced' | 'permissive'
+    allowlist: [],
+    blocklist: []
+  },
+  systemPrompt: ''  // empty = use built-in default; terminal context always appended
 };
 
 // LLM settings managed by the in-app settings panel.
@@ -30,7 +35,10 @@ const LLM_DEFAULTS = {
   openaiAccessToken:  '',
   openaiRefreshToken: '',
   openaiTokenExpiry:  0,   // unix ms; 0 = unknown
-  geminiApiKey:       ''
+  geminiClientId:     '',
+  geminiAccessToken:  '',
+  geminiRefreshToken: '',
+  geminiTokenExpiry:  0
 };
 
 // Merges source into target, but only for keys already present in target.
@@ -75,6 +83,7 @@ function saveConfig(config) {
     terminal:     config.terminal,
     context:      config.context,
     assistant:    config.assistant,
+    commandPolicy: config.commandPolicy,
     systemPrompt: config.systemPrompt || ''
   };
   fs.writeFileSync(configPath, yaml.dump(toWrite), 'utf8');
