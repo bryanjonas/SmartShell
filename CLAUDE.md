@@ -10,7 +10,7 @@ The assistant receives a rolling window of recent terminal commands/output and c
 ## Tech Stack
 - Runtime: Electron v40 + Node.js v18+
 - Terminal: `node-pty` + `@xterm/xterm`
-- LLM transport: OpenAI-compatible streaming APIs via `src/ollamaClient.js`
+- LLM transport: OpenAI-compatible streaming APIs + OpenAI Responses API via `src/ollamaClient.js`
 - Config: `js-yaml`
 - Packaging: `electron-builder` (macOS `.dmg` target)
 
@@ -32,9 +32,9 @@ No automated test suite is currently configured.
 src/
   main.js              # Main process: IPC, PTY lifecycle, provider auth, prompt assembly
   ptyManager.js        # PTY spawn/write/resize wrappers
-  configLoader.js      # Loads/saves config.yaml with defaults merge
+  configLoader.js      # Loads/saves config.yaml and LLM settings (user-data dir)
   contextBuffer.js     # Command/output rolling context state machine
-  ollamaClient.js      # OpenAI-compatible streaming client (/chat/completions or /responses)
+  ollamaClient.js      # Streaming client: /chat/completions or /responses (Codex)
   preload.js
   renderer/
     index.html         # App shell + settings + assistant bar
@@ -43,17 +43,38 @@ src/
     chatManager.js     # Chat rendering, command extraction, run safety, run actions
     settingsManager.js # Provider/settings UI + save/fetch/auth orchestration
     styles.css         # UI styles
-config.default.yaml    # Checked-in template
+config.default.yaml    # Checked-in template (terminal/context/assistant/policy only)
 config.yaml            # Local runtime config (gitignored)
 ```
 
 ## Current Provider Support
 
 1. Local OpenAI-compatible endpoint (`source: local`)
-2. OpenAI Codex OAuth (`source: openai`)
-3. Gemini OAuth (`source: gemini`)
+2. OpenAI Codex OAuth (`source: openai`) — uses Responses API via `chatgpt.com/backend-api/codex`
+3. Gemini OAuth (`source: gemini`) — uses Google's OpenAI-compatible endpoint
 
 Provider/model selection uses an authoritative top-level selector in settings.
+
+## Config Storage Split
+
+LLM settings (URL, model, OAuth tokens) are stored via `loadLLMSettings`/`saveLLMSettings` in the OS user-data directory (`app.getPath('userData')`), **not** in `config.yaml`. This keeps secrets out of the project directory entirely.
+
+`config.yaml` (and its defaults from `config.default.yaml`) holds only:
+- `terminal` — shell, fontSize, fontFamily
+- `context` — maxEntries, maxOutputChars
+- `assistant` — mode
+- `commandPolicy` — runMode, allowlist, blocklist
+- `systemPrompt` — custom prompt override
+
+## LLM Client (`ollamaClient.js`)
+
+`LLMClient` supports two streaming modes controlled by `useResponsesAPI`:
+- `false` (default): POST `/v1/chat/completions` — SSE with `data:` lines (standard)
+- `true`: POST `/v1/responses` (or custom path) — SSE with named `event:` lines; text in `response.output_text.delta`
+
+Constructor paths are configurable (`responsesPath`, `completionsPath`, `modelsPath`) to support Gemini's different URL layout. All streaming methods accept an `AbortSignal` via `options.signal`.
+
+`createLLMClientForSource(source, url, model, token)` in `main.js` is the canonical factory — always use it instead of constructing `LLMClient` directly.
 
 ## Command Suggestion Safety System
 
@@ -89,6 +110,7 @@ Terminal:
 
 Chat streaming:
 - `chat:send`, `chat:chunk`, `chat:done`, `chat:error`
+- `chat:stop` — cancels the active stream via AbortController
 - `autochat:start`, `autochat:chunk`, `autochat:done`, `autochat:error`
 
 Settings/config:
@@ -103,16 +125,9 @@ OAuth:
 - `openai:start-oauth`, `openai:disconnect`
 - `gemini:start-oauth`, `gemini:disconnect`
 
-## Config Keys (effective)
+## Config Keys (config.yaml)
 
 ```yaml
-llm:
-  source: local|openai|gemini
-  url: string
-  model: string
-  openaiAccessToken/openaiRefreshToken/openaiTokenExpiry
-  geminiClientId/geminiAccessToken/geminiRefreshToken/geminiTokenExpiry
-
 terminal:
   shell: string
   fontSize: number
@@ -133,12 +148,28 @@ commandPolicy:
 systemPrompt: string
 ```
 
+## LLM Settings (user-data, never in config.yaml)
+
+```yaml
+source: local|openai|gemini
+url: string                  # local endpoint base URL
+model: string
+openaiAccessToken: string
+openaiRefreshToken: string
+openaiTokenExpiry: number
+geminiClientId: string
+geminiAccessToken: string
+geminiRefreshToken: string
+geminiTokenExpiry: number
+```
+
 ## Build/Packaging Notes
 - `electron-builder` currently targets macOS `.dmg`
 - `node-pty` is unpacked in ASAR config
-- `config.yaml` is included in package files list; treat it as sensitive local state
+- `config.yaml` is included in package files list; contains only non-secret config
 
 ## Security Notes
 - `nodeIntegration: true` and `contextIsolation: false` are currently enabled
 - Do not load untrusted remote content in renderer
-- Keep `config.yaml` out of version control (contains local tokens/secrets)
+- OAuth tokens are stored in the OS user-data directory, never in `config.yaml` or the repo
+- `config.yaml` is gitignored as a convention but contains no secrets

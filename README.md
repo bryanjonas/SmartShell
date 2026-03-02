@@ -10,7 +10,7 @@ SmartShell is an Electron desktop app with:
 ## Features
 
 - Full interactive terminal (`node-pty` + `xterm.js`)
-- Streaming AI chat responses
+- Streaming AI chat responses (with Stop button to cancel mid-stream)
 - Provider/model selection in settings (authoritative top-level selector)
 - LLM providers:
   - Local OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, etc.)
