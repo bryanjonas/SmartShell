@@ -28,15 +28,16 @@ class LLMClient {
     return h;
   }
 
-  async chat(systemPrompt, userMessage, onChunk, onDone, onError) {
+  async chat(systemPrompt, userMessage, onChunk, onDone, onError, options = {}) {
+    const signal = options.signal || null;
     if (this.useResponsesAPI) {
-      return this._chatViaResponsesAPI(systemPrompt, userMessage, onChunk, onDone, onError);
+      return this._chatViaResponsesAPI(systemPrompt, userMessage, onChunk, onDone, onError, signal);
     }
-    return this._chatViaCompletions(systemPrompt, userMessage, onChunk, onDone, onError);
+    return this._chatViaCompletions(systemPrompt, userMessage, onChunk, onDone, onError, signal);
   }
 
   // Stream via POST /v1/chat/completions (local endpoints, vLLM, etc.)
-  async _chatViaCompletions(systemPrompt, userMessage, onChunk, onDone, onError) {
+  async _chatViaCompletions(systemPrompt, userMessage, onChunk, onDone, onError, signal) {
     const body = JSON.stringify({
       model: this.model,
       messages: [
@@ -51,9 +52,11 @@ class LLMClient {
       response = await fetch(`${this.baseUrl}${this.completionsPath}`, {
         method: 'POST',
         headers: this._buildHeaders(),
-        body
+        body,
+        signal
       });
     } catch (err) {
+      if (this._isAbortError(err, signal)) { onDone(); return; }
       onError(`Cannot connect to LLM server at ${this.baseUrl}.\nError: ${err.message}`);
       return;
     }
@@ -95,6 +98,7 @@ class LLMClient {
         }
       }
     } catch (err) {
+      if (this._isAbortError(err, signal)) { finish(); return; }
       onError(`Stream error: ${err.message}`);
       return;
     }
@@ -104,7 +108,7 @@ class LLMClient {
 
   // Stream via POST Responses API endpoint.
   // SSE events use named event types; text arrives in `response.output_text.delta`.
-  async _chatViaResponsesAPI(systemPrompt, userMessage, onChunk, onDone, onError) {
+  async _chatViaResponsesAPI(systemPrompt, userMessage, onChunk, onDone, onError, signal) {
     const body = JSON.stringify({
       model:        this.model,
       instructions: systemPrompt,
@@ -118,9 +122,11 @@ class LLMClient {
       response = await fetch(`${this.baseUrl}${this.responsesPath}`, {
         method: 'POST',
         headers: this._buildHeaders(),
-        body
+        body,
+        signal
       });
     } catch (err) {
+      if (this._isAbortError(err, signal)) { onDone(); return; }
       onError(`Cannot connect to OpenAI.\nError: ${err.message}`);
       return;
     }
@@ -176,6 +182,7 @@ class LLMClient {
         }
       }
     } catch (err) {
+      if (this._isAbortError(err, signal)) { finish(); return; }
       onError(`Stream error: ${err.message}`);
       return;
     }
@@ -195,6 +202,11 @@ class LLMClient {
     }
     const data = await response.json();
     return (data.data || []).map(m => m.id).sort();
+  }
+
+  _isAbortError(err, signal) {
+    if (signal && signal.aborted) return true;
+    return !!(err && (err.name === 'AbortError' || err.code === 20));
   }
 }
 

@@ -55,7 +55,10 @@ class ChatManager {
   }
 
   _bindEvents() {
-    this.sendBtn.addEventListener('click', () => this._sendMessage());
+    this.sendBtn.addEventListener('click', () => {
+      if (this.streaming) this._stopMessage();
+      else this._sendMessage();
+    });
 
     this.chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -75,9 +78,7 @@ class ChatManager {
 
     // Stream complete
     ipcRenderer.on('chat:done', () => {
-      this.streaming = false;
-      this.sendBtn.disabled = false;
-      this.chatInput.disabled = false;
+      this._setStreamingState(false);
       if (this.currentBody) {
         this.currentBody.classList.remove('streaming-cursor');
       }
@@ -91,9 +92,7 @@ class ChatManager {
 
     // Error from provider
     ipcRenderer.on('chat:error', (_event, errMsg) => {
-      this.streaming = false;
-      this.sendBtn.disabled = false;
-      this.chatInput.disabled = false;
+      this._setStreamingState(false);
 
       if (this.currentBody) {
         const msgEl = this.currentBody.closest('.message');
@@ -158,9 +157,7 @@ class ChatManager {
     if (!text || this.streaming) return;
 
     this.chatInput.value = '';
-    this.streaming = true;
-    this.sendBtn.disabled = true;
-    this.chatInput.disabled = true;
+    this._setStreamingState(true);
 
     this._appendMessage('user', 'You', text);
 
@@ -170,6 +167,19 @@ class ChatManager {
     this.currentBody.classList.add('streaming-cursor');
 
     ipcRenderer.send('chat:send', text);
+  }
+
+  _stopMessage() {
+    if (!this.streaming) return;
+    ipcRenderer.send('chat:stop');
+  }
+
+  _setStreamingState(streaming) {
+    this.streaming = streaming;
+    this.sendBtn.disabled = false;
+    this.chatInput.disabled = streaming;
+    this.sendBtn.textContent = streaming ? 'Stop' : 'Send';
+    this.sendBtn.classList.toggle('stop-state', streaming);
   }
 
   _appendMessage(role, roleLabel, text) {
@@ -201,14 +211,15 @@ class ChatManager {
     const body = messageEl.querySelector('.message-body');
     if (!body) return;
     const raw = body.textContent || '';
+    const normalizedBodyText = raw
+      .replace(/```(?:bash|sh|zsh)?\n([\s\S]*?)```/gi, (_, inner) => inner.trim())
+      .replace(/`([^`\n]+)`/g, '$1')
+      .replace(/\[(?:runnable|example)\]\s*/gi, '');
 
     const commandCandidates = this._extractSuggestedCommands(raw)
       .map((candidate) => this._annotateCandidate(candidate));
+    body.textContent = normalizedBodyText;
     if (commandCandidates.length === 0) return;
-
-    body.textContent = raw
-      .replace(/```(?:bash|sh|zsh)?\n([\s\S]*?)```/gi, (_, inner) => inner.trim())
-      .replace(/`([^`\n]+)`/g, '$1');
 
     const existing = messageEl.querySelector('.message-commands');
     if (existing) existing.remove();
@@ -562,6 +573,7 @@ class ChatManager {
     if (parts.length === 1) {
       if (!/^[a-zA-Z][\w.+-]*$/.test(head)) return false;
       if (this._looksLikeFilename(head)) return false;
+      if (this._isPlaceholderToken(head)) return false;
       if (!KNOWN_SINGLE_WORD_COMMANDS.has(head.toLowerCase())) return false;
       return true;
     }
@@ -577,6 +589,11 @@ class ChatManager {
     if (token.includes('/')) return true;
     if (token.includes('_') && !token.includes('-')) return true;
     return false;
+  }
+
+  _isPlaceholderToken(token) {
+    const v = String(token || '').trim().toLowerCase();
+    return v === 'username' || v === 'hostname' || v === 'user' || v === 'host';
   }
 
   async _copyToClipboard(text, buttonEl) {

@@ -666,6 +666,14 @@ html, body {
 #send-btn:hover  { background: #4a7ede; }
 #send-btn:active { transform: scale(0.97); }
 
+#send-btn.stop-state {
+  background: #9e3d3d;
+}
+
+#send-btn.stop-state:hover {
+  background: #b84a4a;
+}
+
 #send-btn:disabled {
   background: #3a3a3a;
   color: #666;

@@ -33,6 +33,7 @@ let ptyExitHandler = null;
 let autoCommentTimer = null;
 let lastAutoEntryCount = 0;
 let autoFinalizeTimer = null;
+let activeChatAbortController = null;
 
 // ---- OpenAI Codex OAuth constants ----
 const CODEX_CLIENT_ID   = 'app_EMoamEEZ73f0CkXaXp7hrann';
@@ -405,6 +406,13 @@ ipcMain.on('pty:resize', (_event, cols, rows) => {
 
 // ---- IPC: Chat message ----
 ipcMain.on('chat:send', async (_event, userMessage) => {
+  if (activeChatAbortController) {
+    try { activeChatAbortController.abort(); } catch (_) {}
+    activeChatAbortController = null;
+  }
+  const abortController = new AbortController();
+  activeChatAbortController = abortController;
+
   try {
     if (llmSettings.source === 'openai') {
       await _refreshCodexTokenIfNeeded();
@@ -424,15 +432,32 @@ ipcMain.on('chat:send', async (_event, userMessage) => {
         if (win && !win.isDestroyed()) win.webContents.send('chat:chunk', chunk);
       },
       () => {
+        if (activeChatAbortController === abortController) {
+          activeChatAbortController = null;
+        }
         if (win && !win.isDestroyed()) win.webContents.send('chat:done');
       },
       (err) => {
+        if (activeChatAbortController === abortController) {
+          activeChatAbortController = null;
+        }
         if (win && !win.isDestroyed()) win.webContents.send('chat:error', err);
-      }
+      },
+      { signal: abortController.signal }
     );
   } catch (err) {
+    if (activeChatAbortController === abortController) {
+      activeChatAbortController = null;
+    }
     if (win && !win.isDestroyed()) win.webContents.send('chat:error', err.message || String(err));
   }
+});
+
+ipcMain.on('chat:stop', () => {
+  if (!activeChatAbortController) return;
+  try {
+    activeChatAbortController.abort();
+  } catch (_) {}
 });
 
 // ---- IPC: Fetch models from an OpenAI-compatible endpoint ----
