@@ -67,9 +67,7 @@ const BASE_SYSTEM_PROMPT = [
   'diagnose errors, suggest next commands, and explain what\'s happening in their shell.',
   '',
   'Guidelines:',
-  '- When suggesting shell commands, wrap them in backticks: `command here`',
-  '- Prefix runnable commands with [runnable] and examples/placeholders with [example]',
-  '- Only wrap full runnable commands in backticks; do not backtick filenames, paths, hostnames, or output values',
+  '- Format shell commands in a fenced code block (```bash) or inline backtick; do not backtick filenames, paths, or output values',
   '- If the terminal output shows an error, diagnose it directly and suggest a fix',
   '- Keep responses concise — the user is in an active terminal workflow',
   '- You may reference specific lines or values from the terminal output'
