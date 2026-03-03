@@ -228,6 +228,9 @@ class ChatManager {
     const commandsWrap = document.createElement('div');
     commandsWrap.className = 'message-commands';
 
+    // Cards without an explicit [runnable]/[example] tag are queued for background LLM screening.
+    const pendingScreen = new Map(); // cmdKey → { cardEl, actionsEl, candidate }
+
     for (const candidate of commandCandidates) {
       const card = document.createElement('div');
       card.className = `command-card ${candidate.status}`;
@@ -286,10 +289,59 @@ class ChatManager {
       card.appendChild(actions);
 
       commandsWrap.appendChild(card);
+
+      if (candidate.explicitIntent === null && candidate.status !== 'blocked') {
+        pendingScreen.set(candidate.cmd.toLowerCase(), { cardEl: card, actionsEl: actions, candidate });
+      }
     }
 
     messageEl.appendChild(commandsWrap);
     this._scrollToBottom();
+
+    if (pendingScreen.size > 0) {
+      this._screenCommands(pendingScreen);
+    }
+  }
+
+  async _screenCommands(pendingScreen) {
+    for (const { cardEl } of pendingScreen.values()) {
+      cardEl.classList.add('screening');
+    }
+
+    const promises = [...pendingScreen.values()].map(async ({ cardEl, actionsEl, candidate }) => {
+      try {
+        const { intent } = await ipcRenderer.invoke('command:screen', { cmd: candidate.cmd });
+        cardEl.classList.remove('screening');
+        if (intent === 'example') {
+          this._applyExampleScreeningResult(cardEl, actionsEl);
+        }
+      } catch (_) {
+        cardEl.classList.remove('screening');
+      }
+    });
+
+    await Promise.allSettled(promises);
+  }
+
+  _applyExampleScreeningResult(cardEl, actionsEl) {
+    cardEl.className = cardEl.className.replace(/\b(runnable|confirm)\b/g, '').trim() + ' needs-edit';
+
+    const badges = cardEl.querySelector('.command-badges');
+    if (badges) {
+      let statusBadge = badges.querySelector('.command-badge.status');
+      if (!statusBadge) {
+        statusBadge = document.createElement('span');
+        statusBadge.className = 'command-badge status needs-edit';
+        badges.insertBefore(statusBadge, badges.firstChild);
+      } else {
+        statusBadge.className = 'command-badge status needs-edit';
+      }
+      statusBadge.textContent = 'Needs Edit';
+      statusBadge.title = 'Screened by model: requires editing before running.';
+    }
+
+    const runBtn = actionsEl.querySelector('.command-btn.run');
+    if (runBtn) runBtn.remove();
   }
 
   async _attemptRunCommand(candidate, commandText, buttonEl) {

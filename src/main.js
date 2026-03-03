@@ -68,6 +68,7 @@ const BASE_SYSTEM_PROMPT = [
   '',
   'Guidelines:',
   '- Format shell commands in a fenced code block (```bash) or inline backtick; do not backtick filenames, paths, or output values',
+  '- If a command is ready to run as-is, prefix it with [runnable]; if it is only an illustrative example, prefix it with [example]',
   '- If the terminal output shows an error, diagnose it directly and suggest a fix',
   '- Keep responses concise — the user is in an active terminal workflow',
   '- You may reference specific lines or values from the terminal output'
@@ -548,6 +549,46 @@ ipcMain.handle('command:precheck', (_event, commandText) => {
   } catch (err) {
     return { ok: false, skipped: false, reason: err.message || String(err) };
   }
+});
+
+// ---- IPC: Secondary command screening ----
+// Silently asks the model whether an extracted command is ready to run or is just an example.
+// Returns { intent: 'runnable' | 'example' | 'unknown' } — never throws.
+ipcMain.handle('command:screen', async (_event, { cmd }) => {
+  if (!ollamaClient) return { intent: 'unknown' };
+
+  const question = [
+    'Is the following shell command complete and ready to run as-is,',
+    'or does it require editing (e.g. contains placeholder values, is incomplete, or is only an example)?',
+    '',
+    'Reply with exactly one word: "runnable" or "example". No explanation.',
+    '',
+    `Command: ${cmd}`
+  ].join('\n');
+
+  return new Promise((resolve) => {
+    let accumulated = '';
+    const ac = new AbortController();
+    const timeout = setTimeout(() => { ac.abort(); resolve({ intent: 'unknown' }); }, 8000);
+
+    ollamaClient.chat('', question,
+      (chunk) => { accumulated += chunk; },
+      () => {
+        clearTimeout(timeout);
+        const lower = accumulated.trim().toLowerCase();
+        const intent = lower.includes('example') ? 'example'
+          : lower.includes('runnable') ? 'runnable'
+          : 'unknown';
+        resolve({ intent });
+      },
+      (err) => {
+        clearTimeout(timeout);
+        console.warn('[command:screen]', err);
+        resolve({ intent: 'unknown' });
+      },
+      { signal: ac.signal }
+    );
+  });
 });
 
 // ---- IPC: Assistant behavior mode ----

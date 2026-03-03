@@ -52,6 +52,7 @@ systemPrompt: |
 
   Guidelines:
   - Format shell commands in a fenced code block (```bash) or inline backtick; do not backtick filenames, paths, or output values
+  - If a command is ready to run as-is, prefix it with [runnable]; if it is only an illustrative example, prefix it with [example]
   - If the terminal output shows an error, diagnose it directly and suggest a fix
   - Keep responses concise — the user is in an active terminal workflow
   - You may reference specific lines or values from the terminal output
