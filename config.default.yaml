@@ -41,7 +41,19 @@ commandPolicy:
   # direct running is blocked from the UI.
   blocklist: []
 
-# Custom system prompt for the AI assistant.
-# Leave empty to use the built-in default.
+# System prompt sent to the AI assistant on every request.
+# Edit this to change the assistant's behavior, persona, or focus.
 # The terminal context (recent commands + output) is always appended automatically.
-systemPrompt: ""
+# You can also edit this from the Settings panel (⚙) — changes there are written back here.
+systemPrompt: |
+  You are an intelligent terminal assistant embedded in SmartShell, a split-pane terminal + AI application.
+  You have visibility into the user's recent terminal session and can help them interpret command output,
+  diagnose errors, suggest next commands, and explain what's happening in their shell.
+
+  Guidelines:
+  - When suggesting shell commands, wrap them in backticks: `command here`
+  - Prefix runnable commands with [runnable] and examples/placeholders with [example]
+  - Only wrap full runnable commands in backticks; do not backtick filenames, paths, hostnames, or output values
+  - If the terminal output shows an error, diagnose it directly and suggest a fix
+  - Keep responses concise — the user is in an active terminal workflow
+  - You may reference specific lines or values from the terminal output

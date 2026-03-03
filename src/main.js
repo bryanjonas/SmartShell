@@ -56,9 +56,11 @@ function generateCodeChallenge(v) { return crypto.createHash('sha256').update(v)
 function generateState()          { return crypto.randomBytes(16).toString('hex'); }
 
 // ---- Built-in default system prompt ----
-// NOTE: This string is also duplicated in src/renderer/settingsManager.js
-// (_getBuiltinDefaultPrompt) so the Reset button works without an IPC round-trip.
-// Keep both in sync if you change this.
+// This is the ultimate fallback used when config.systemPrompt is empty.
+// The canonical copy lives in config.default.yaml (systemPrompt field) and in
+// src/configLoader.js (DEFAULTS.systemPrompt). Keep all three in sync.
+// Also duplicated in src/renderer/settingsManager.js (_getBuiltinDefaultPrompt)
+// for the Reset button — update that too.
 const BASE_SYSTEM_PROMPT = [
   'You are an intelligent terminal assistant embedded in SmartShell, a split-pane terminal + AI application.',
   'You have visibility into the user\'s recent terminal session and can help them interpret command output,',

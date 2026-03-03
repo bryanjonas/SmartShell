@@ -407,9 +407,7 @@ class SettingsManager {
 
     // ── Save ──
     this.saveBtn.addEventListener('click', async () => {
-      const promptValue  = this.systemPromptTextarea.value.trim();
-      const defaultValue = this._getBuiltinDefaultPrompt().trim();
-      const systemPrompt = promptValue === defaultValue ? '' : promptValue;
+      const systemPrompt = this.systemPromptTextarea.value.trim();
       const authoritativeSource = this.activeProviderSelect.value || this._currentSource;
       this._switchSource(authoritativeSource);
       this._applyUnifiedModelToSource();
