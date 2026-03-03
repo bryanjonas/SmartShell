@@ -314,6 +314,8 @@ class ChatManager {
         cardEl.classList.remove('screening');
         if (intent === 'example') {
           this._applyExampleScreeningResult(cardEl, actionsEl);
+        } else if (intent === 'runnable' && candidate.status === 'needs-edit' && !candidate.placeholder) {
+          this._applyRunnableScreeningResult(cardEl, actionsEl, candidate);
         }
       } catch (_) {
         cardEl.classList.remove('screening');
@@ -342,6 +344,30 @@ class ChatManager {
 
     const runBtn = actionsEl.querySelector('.command-btn.run');
     if (runBtn) runBtn.remove();
+  }
+
+  _applyRunnableScreeningResult(cardEl, actionsEl, candidate) {
+    const requireConfirm = candidate.risk === 'medium';
+    const newStatus = requireConfirm ? 'confirm' : 'runnable';
+
+    cardEl.className = cardEl.className
+      .replace(/\b(needs-edit|example)\b/g, '')
+      .trim() + ` ${newStatus}`;
+
+    const badges = cardEl.querySelector('.command-badges');
+    if (badges) {
+      const statusBadge = badges.querySelector('.command-badge.status');
+      if (statusBadge) statusBadge.remove();
+    }
+
+    const upgradedCandidate = { ...candidate, requireConfirm, status: newStatus, canRun: true };
+    const runBtn = document.createElement('button');
+    runBtn.className = 'command-btn run';
+    runBtn.textContent = requireConfirm ? 'Run (Confirm)' : 'Run';
+    runBtn.addEventListener('click', async () => {
+      await this._attemptRunCommand(upgradedCandidate, candidate.cmd, runBtn);
+    });
+    actionsEl.appendChild(runBtn);
   }
 
   async _attemptRunCommand(candidate, commandText, buttonEl) {
@@ -552,7 +578,8 @@ class ChatManager {
       status,
       canRun,
       requireConfirm,
-      reason
+      reason,
+      placeholder
     };
   }
 

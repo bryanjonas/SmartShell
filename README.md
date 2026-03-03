@@ -24,6 +24,7 @@ SmartShell is an Electron desktop app with:
   - `Copy` and optional `Run`
   - Risk-aware gating (`Run`, `Run (Confirm)`, or blocked)
   - Color-coded alert badges (`Needs Edit`, `Risk: low|medium|high`)
+  - Background LLM screening: cards without explicit intent tags are silently classified as runnable or example and updated in-place
 - Command safety policy in settings:
   - run mode (`strict` | `balanced` | `permissive`)
   - allowlist patterns
@@ -161,7 +162,7 @@ cp config.default.yaml config.yaml
 | `commandPolicy.runMode` | `"balanced"` | `strict` \| `balanced` \| `permissive` |
 | `commandPolicy.allowlist` | `[]` | Prefix patterns trusted for command gating |
 | `commandPolicy.blocklist` | `[]` | Substring patterns blocked from direct run |
-| `systemPrompt` | `""` | Custom system prompt; empty uses built-in default |
+| `systemPrompt` | *(full default)* | System prompt sent to the AI; edit in `config.yaml` or via settings (`⚙`) |
 
 ## Context Behavior
 
@@ -172,6 +173,6 @@ cp config.default.yaml config.yaml
 
 ## Security Notes
 
-- `config.yaml` is gitignored and may contain local OAuth tokens/secrets.
+- `config.yaml` is gitignored; it contains no secrets (LLM settings and OAuth tokens are in the OS user-data directory).
 - `nodeIntegration` is enabled in renderer; do not load untrusted web content.
-- LLM settings are stored separately in your OS user-data directory (not in repo `config.yaml`).
+- LLM settings are stored separately in your OS user-data directory (not in the project directory).

@@ -95,6 +95,16 @@ Implemented in `src/renderer/chatManager.js` with policy data from config:
   - `Run (Confirm)` + confirm modal for gated commands
   - pre-run syntax precheck via main IPC (`command:precheck`)
 
+### Secondary LLM Screening
+
+For command cards that arrive without an explicit `[runnable]`/`[example]` tag, a silent background classification call is fired via `command:screen` IPC. The main process sends a one-shot prompt to the active LLM asking whether the command is ready to run or requires editing, then resolves a single word: `runnable`, `example`, or `unknown`.
+
+- Cards are briefly dimmed (`.command-card.screening`) while in-flight
+- `example` result: card is downgraded to `Needs Edit`, Run button removed
+- `runnable` result: card is upgraded to runnable/confirm, `Needs Edit` badge removed, Run button added
+- 8-second timeout; errors and timeouts silently resolve `unknown` (no card change)
+- Calls fire in parallel via `Promise.allSettled`; one timeout never blocks others
+
 ## Context Window Behavior
 
 Context is stored in `contextBuffer` as recent command/output entries.
@@ -120,6 +130,7 @@ Settings/config:
 - `assistant:set-mode`
 - `context:clear`
 - `command:precheck`
+- `command:screen` — background intent classification (runnable vs example)
 
 OAuth:
 - `openai:start-oauth`, `openai:disconnect`
