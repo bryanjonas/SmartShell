@@ -579,11 +579,12 @@ ipcMain.handle('command:screen', async (_event, { cmd }) => {
         const intent = lower.includes('example') ? 'example'
           : lower.includes('runnable') ? 'runnable'
           : 'unknown';
+        console.log(`[command:screen] cmd="${cmd}" response="${accumulated.trim()}" → ${intent}`);
         resolve({ intent });
       },
       (err) => {
         clearTimeout(timeout);
-        console.warn('[command:screen]', err);
+        console.warn(`[command:screen] cmd="${cmd}" error:`, err);
         resolve({ intent: 'unknown' });
       },
       { signal: ac.signal }
