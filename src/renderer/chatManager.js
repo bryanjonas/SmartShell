@@ -212,6 +212,7 @@ class ChatManager {
     if (!body) return;
     const raw = body.textContent || '';
     const normalizedBodyText = raw
+      .replace(/```(?:bash|sh|zsh)?[ \t]*([^\n`][^`]*)[ \t]*```/g, '$1')
       .replace(/```(?:bash|sh|zsh)?\n([\s\S]*?)```/gi, (_, inner) => inner.trim())
       .replace(/`([^`\n]+)`/g, '$1')
       .replace(/\[(?:runnable|example)\]\s*/gi, '');
@@ -350,8 +351,16 @@ class ChatManager {
       results.push({ cmd, source, explicitIntent: intent });
     };
 
-    const fenced = /```(?:bash|sh|zsh)?\n([\s\S]*?)```/gi;
+    // Single-line triple-backtick blocks: ```command``` or ```bash command```
+    // These are common when LLMs omit newlines inside short code fences.
+    const fencedSingle = /```(?:bash|sh|zsh)?[ \t]*([^\n`][^`]*)[ \t]*```/g;
     let match;
+    while ((match = fencedSingle.exec(text)) !== null) {
+      pushCandidate(match[1].trim(), 'fenced', null);
+    }
+
+    // Multi-line fenced blocks: ```\nline1\nline2\n```
+    const fenced = /```(?:bash|sh|zsh)?\n([\s\S]*?)```/gi;
     while ((match = fenced.exec(text)) !== null) {
       const block = match[1] || '';
       const lines = block.split('\n');
@@ -363,6 +372,8 @@ class ChatManager {
     const inline = /`([^`\n]+)`/g;
     while ((match = inline.exec(text)) !== null) {
       const cmd = match[1] || '';
+      // Skip if this backtick was already consumed by a triple-backtick match above
+      if (cmd.startsWith('``') || cmd.endsWith('``')) continue;
       const contextualIntent = this._detectIntentNearIndex(text, match.index);
       pushCandidate(cmd, 'inline', contextualIntent);
     }
@@ -580,6 +591,11 @@ class ChatManager {
 
     if (!/^(?:[a-zA-Z][\w.+-]*|\.{1,2}\/[\w./-]+|\/[\w./-]+)$/.test(head)) return false;
     if (source === 'inline' && this._looksLikeFilename(head)) return false;
+    // Reject title-case multi-word text: "This will...", "You need...", "Host hostname", etc.
+    // Shell commands virtually never start with a capitalized prose word.
+    if (/^[A-Z][a-z]/.test(head)) return false;
+    // Reject lines ending with sentence punctuation — these are prose, not commands.
+    if (/[.!,;]$/.test(parts[parts.length - 1])) return false;
     return true;
   }
 
