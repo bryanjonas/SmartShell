@@ -212,7 +212,7 @@ class ChatManager {
     if (!body) return;
     const raw = body.textContent || '';
     const normalizedBodyText = raw
-      .replace(/```(?:bash|sh|zsh)?[ \t]*([^\n`][^`]*)[ \t]*```/g, '$1')
+      .replace(/```(?:bash|sh|zsh)?[ \t]*([^\n`][^\n`]*)[ \t]*```/g, '$1')
       .replace(/```(?:bash|sh|zsh)?\n([\s\S]*?)```/gi, (_, inner) => inner.trim())
       .replace(/`([^`\n]+)`/g, '$1')
       .replace(/\[(?:runnable|example)\]\s*/gi, '');
@@ -405,7 +405,7 @@ class ChatManager {
 
     // Single-line triple-backtick blocks: ```command``` or ```bash command```
     // These are common when LLMs omit newlines inside short code fences.
-    const fencedSingle = /```(?:bash|sh|zsh)?[ \t]*([^\n`][^`]*)[ \t]*```/g;
+    const fencedSingle = /```(?:bash|sh|zsh)?[ \t]*([^\n`][^\n`]*)[ \t]*```/g;
     let match;
     while ((match = fencedSingle.exec(text)) !== null) {
       pushCandidate(match[1].trim(), 'fenced', null);
